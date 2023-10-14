@@ -175,11 +175,7 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
                 uint8* SrcPtr = DstData.GetData(); // Get a pointer to the raw data of the source array
                 int32 SrcCount = DstData.Num(); // Get the number of elements in the source array
                 TArray<uint8> NDstData(SrcPtr, SrcCount); // Create the destination array using the pointer and the count
-                // Create new array to store the size at the beginning, then append the rest of the bytes
-                TArray<uint8> Arr2;
-                Arr2.Append((uint8*)&SrcCount, sizeof(int32));
-                Arr2.Append(NDstData);
-                FString base64 = FBase64::Encode(Arr2);
+                FString base64 = FBase64::Encode(NDstData);
 
                 // Send to the server
                 SIOClientComponent->EmitNative("image", base64);
