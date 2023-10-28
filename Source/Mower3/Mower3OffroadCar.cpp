@@ -109,8 +109,8 @@ void AMower3OffroadCar::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	ChaosVehicleMovement->SetLeftThrottleInput(-1.f);
-	ChaosVehicleMovement->SetRightThrottleInput(1.f);
+	// ChaosVehicleMovement->SetLeftThrottleInput(-1.f);
+	// ChaosVehicleMovement->SetRightThrottleInput(1.f);
 
 	ReplaceOrRemoveGrass(false);
 	// ReplaceOrRemoveGrass(true);
