@@ -8,7 +8,11 @@ public class Mower3 : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "Foliage", "Landscape", "SocketIOClient", "SIOJson" });
+		PrivateDependencyModuleNames.AddRange(new string[]
+		{
+			"Foliage", "Landscape",
+			// "SocketIOClient", "SIOJson"
+		});
 
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
@@ -20,6 +24,8 @@ public class Mower3 : ModuleRules
 			"RHI",
 			"RHICore",
 			"D3D12RHI",
+			// SIO
+			"SocketIOClient", "SocketIOLib", "Json", "SIOJson", "JsonUtilities"
 		});
 	}
 }

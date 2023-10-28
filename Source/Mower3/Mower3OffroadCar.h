@@ -6,6 +6,7 @@
 #include "Mower3Pawn.h"
 #include "Mower3OffroadCar.generated.h"
 
+class UCaptureManager;
 /**
  *  Offroad car wheeled vehicle implementation
  */
@@ -36,13 +37,20 @@ class MOWER3_API AMower3OffroadCar : public AMower3Pawn
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Capture, meta = (AllowPrivateAccess = "true"))
 	USceneCaptureComponent2D* MySceneCapture1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Capture, meta = (AllowPrivateAccess = "true"))
+	USceneCaptureComponent2D* MySceneCapture4;
 
+	UPROPERTY()
+	TArray<UCaptureManager*> CaptureManagers;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = SocketIO, meta = (AllowPrivateAccess = "true"))
 	class USocketIOClientComponent* SIOClientComponent;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Camera, meta = (AllowPrivateAccess = "true"))
 	class UCaptureManager* MyCaptureManager;
-
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Camera, meta = (AllowPrivateAccess = "true"))
+	class UCaptureManager* MyCaptureManager2;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Meshes, meta = (AllowPrivateAccess = "true"))
 	UStaticMesh* ParentStaticMesh;
 

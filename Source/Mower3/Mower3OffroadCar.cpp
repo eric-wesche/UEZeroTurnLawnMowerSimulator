@@ -11,6 +11,7 @@
 #include "MowerVehicleMovementComponent.h"
 #include "SocketIOClientComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
+#include "Engine/TextureRenderTarget2D.h"
 #include "GameFramework/SpringArmComponent.h"
 
 AMower3OffroadCar::AMower3OffroadCar(const FObjectInitializer& ObjectInitializer) :
@@ -95,14 +96,24 @@ Super(ObjectInitializer.SetDefaultSubobjectClass<UMowerVehicleMovementComponent>
 
 	MyCaptureManager = CreateDefaultSubobject<UCaptureManager>(TEXT("MyCaptureManager"));
 	
-	check(MyCaptureManager);
 	MyCaptureManager->ColorCaptureComponents = MySceneCapture1;
+
+	// MySceneCapture4 = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("MySceneCapture4"));
+	// MySceneCapture4->SetupAttachment(GetMesh());
+
+	// MyCaptureManager2 = CreateDefaultSubobject<UCaptureManager>(TEXT("MyCaptureManager2"));
+	
+	// MyCaptureManager2->ColorCaptureComponents = MySceneCapture4;
 	
 	SIOClientComponent = CreateDefaultSubobject<USocketIOClientComponent>(TEXT("SocketIOClientComponent"));
 	SIOClientComponent->URLParams.AddressAndPort = TEXT("http://127.0.0.1:8000");
 	SIOClientComponent->URLParams.Path = TEXT("");
 
 	MyCaptureManager->SIOClientComponent = SIOClientComponent;
+	// MyCaptureManager2->SIOClientComponent = SIOClientComponent;
+
+	 
+
 }
 
 void AMower3OffroadCar::Tick(float DeltaSeconds)
@@ -125,6 +136,36 @@ void AMower3OffroadCar::BeginPlay()
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Received: %s"), *USIOJConvert::ToJsonString(Message));
 	});
+
+	// Get the location and rotation of the existing scene capture component
+	FVector ExistingLocation = MySceneCapture1->GetComponentLocation();
+	FRotator ExistingRotation = MySceneCapture1->GetComponentRotation();
+
+	// Loop 10 times
+	for (int i = 0; i < 3; i++)
+	{
+		UCaptureManager* TempCaptureManager = NewObject<UCaptureManager>(this);
+		
+		// Create a new scene capture component
+		USceneCaptureComponent2D* SceneCapture = NewObject<USceneCaptureComponent2D>(this);
+		SceneCapture->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+		SceneCapture->RegisterComponent();
+		// new rotation is existing rotation plus 360 divided by the number of captures
+		// FRotator NewRotation = ExistingRotation + FRotator(0, 360 / 10 * i, 0);
+		FRotator NewRotation = FRotator(0, ExistingRotation.Yaw + 360 / 10 * i, 0);
+
+		SceneCapture->SetWorldLocationAndRotation(ExistingLocation, NewRotation);
+
+		TempCaptureManager->ColorCaptureComponents = SceneCapture;
+		TempCaptureManager->SIOClientComponent = SIOClientComponent;
+		TempCaptureManager->InstanceName = FString::Printf(TEXT("Instance %d"), i);
+		AddInstanceComponent(TempCaptureManager);
+		TempCaptureManager->RegisterComponent();
+		
+		CaptureManagers.Add(TempCaptureManager);
+	}
+	// log the number of capture managers
+	UE_LOG(LogTemp, Warning, TEXT("Number of Capture Managers: %d"), CaptureManagers.Num());
 }
 
 void AMower3OffroadCar::ReplaceOrRemoveGrass(const bool bDebug, const FString& grassNameToReplace)

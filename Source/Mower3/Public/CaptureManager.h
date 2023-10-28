@@ -60,6 +60,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = SocketIO, meta = (AllowPrivateAccess = "true"))
 	class USocketIOClientComponent* SIOClientComponent;
 
+	FString InstanceName = "ddefault";
 private:
 	// RenderRequest Queue
 	TQueue<FRenderRequest*> RenderRequestQueue;
@@ -70,7 +71,8 @@ private:
 
 	FScreenImageProperties ScreenImageProperties = { 0 };
 	// const FModelImageProperties ModelImageProperties = { 640, 480 };
-	const FModelImageProperties ModelImageProperties = { 300, 300 };
+	const int32 wh = 100;
+	const FModelImageProperties ModelImageProperties = { wh, wh };
 
 	// count of total frames captured
 	int frameCount = 1;

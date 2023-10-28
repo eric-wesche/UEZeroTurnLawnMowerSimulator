@@ -8,6 +8,7 @@
 #include "SocketIOClientComponent.h"
 #include "ImageUtils.h"
 
+
 // Sets default values for this component's properties
 UCaptureManager::UCaptureManager()
 {
@@ -26,6 +27,8 @@ void UCaptureManager::BeginPlay()
         UE_LOG(LogTemp, Warning, TEXT("ColorCaptureComponents not set"));
         return;
     }
+    // log defaultsubobject name
+    UE_LOG(LogTemp, Warning, TEXT("ColorCaptureComponents name: %s"), *ColorCaptureComponents->GetName());
     SetupColorCaptureComponent(ColorCaptureComponents);
 }
 
@@ -177,9 +180,17 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
                 TArray<uint8> NDstData(SrcPtr, SrcCount); // Create the destination array using the pointer and the count
                 FString base64 = FBase64::Encode(NDstData);
 
-                // Send to the server
-                SIOClientComponent->EmitNative("image", base64);
+                auto JsonObject = USIOJConvert::MakeJsonObject();
+                JsonObject->SetStringField(TEXT("name"), InstanceName);
+                JsonObject->SetStringField(TEXT("image"), base64);
+                SIOClientComponent->EmitNative(TEXT("imageJson"), JsonObject);
                 
+                // Send to the server
+                // SIOClientComponent->EmitNative("image", base64);
+                
+                // log emitting image for capture manager name
+                UE_LOG(LogTemp, Warning, TEXT("Emitting image for capture manager name: %s"), *InstanceName);
+                auto val = InstanceName;
                 // create new inference task
                 FAsyncTask<AsyncInferenceTask>* MyTask =
                     new FAsyncTask<AsyncInferenceTask>(nextRenderRequest->Image, ScreenImageProperties, ModelImageProperties);
