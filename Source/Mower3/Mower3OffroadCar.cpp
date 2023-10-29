@@ -131,10 +131,16 @@ void AMower3OffroadCar::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	SIOClientComponent->OnNativeEvent(TEXT("my response"), [this](const FString& Event,
+	SIOClientComponent->OnNativeEvent(TEXT("processedImage"), [this](const FString& Event,
 																  const TSharedPtr<FJsonValue>& Message)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Received: %s"), *USIOJConvert::ToJsonString(Message));
+		// UE_LOG(LogTemp, Warning, TEXT("Received: %s"), *USIOJConvert::ToJsonString(Message));
+		// as object
+		TSharedPtr<FJsonObject> JsonObject = Message->AsObject();
+		// as string
+		FString name = JsonObject->GetStringField("name");
+		// log
+		UE_LOG(LogTemp, Warning, TEXT("Received name: %s"), *name);
 	});
 
 	// Get the location and rotation of the existing scene capture component
@@ -142,7 +148,7 @@ void AMower3OffroadCar::BeginPlay()
 	FRotator ExistingRotation = MySceneCapture1->GetComponentRotation();
 
 	// Loop 10 times
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < 0; i++)
 	{
 		UCaptureManager* TempCaptureManager = NewObject<UCaptureManager>(this);
 		
@@ -151,8 +157,8 @@ void AMower3OffroadCar::BeginPlay()
 		SceneCapture->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
 		SceneCapture->RegisterComponent();
 		// new rotation is existing rotation plus 360 divided by the number of captures
-		// FRotator NewRotation = ExistingRotation + FRotator(0, 360 / 10 * i, 0);
-		FRotator NewRotation = FRotator(0, ExistingRotation.Yaw + 360 / 10 * i, 0);
+		FRotator NewRotation = ExistingRotation + FRotator(0, 360 / 10 * i, 0);
+		// FRotator NewRotation = FRotator(0, ExistingRotation.Yaw + 360 / 10 * i, 0);
 
 		SceneCapture->SetWorldLocationAndRotation(ExistingLocation, NewRotation);
 

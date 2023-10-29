@@ -71,7 +71,7 @@ private:
 
 	FScreenImageProperties ScreenImageProperties = { 0 };
 	// const FModelImageProperties ModelImageProperties = { 640, 480 };
-	const int32 wh = 100;
+	const int32 wh = 400;
 	const FModelImageProperties ModelImageProperties = { wh, wh };
 
 	// count of total frames captured

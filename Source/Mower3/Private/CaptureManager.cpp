@@ -189,7 +189,7 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
                 // SIOClientComponent->EmitNative("image", base64);
                 
                 // log emitting image for capture manager name
-                UE_LOG(LogTemp, Warning, TEXT("Emitting image for capture manager name: %s"), *InstanceName);
+                // UE_LOG(LogTemp, Warning, TEXT("Emitting image for capture manager name: %s"), *InstanceName);
                 auto val = InstanceName;
                 // create new inference task
                 FAsyncTask<AsyncInferenceTask>* MyTask =
