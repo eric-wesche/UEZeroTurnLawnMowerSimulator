@@ -20,7 +20,12 @@ Super(ObjectInitializer.SetDefaultSubobjectClass<UMowerVehicleMovementComponent>
 	// construct the mesh components
 	Chassis = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Chassis"));
 	Chassis->SetupAttachment(GetMesh());
-
+	Chassis->SetNotifyRigidBodyCollision(true);
+	Chassis->SetCollisionProfileName(FName("BlockAllDynamic"));
+	Chassis->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Block);
+	// Chassis->SetCollisionResponseToChannel(ECollisionChannel::ECC_WorldDynamic, ECollisionResponse::ECR_Block);
+	
+	
 	// NOTE: tire sockets are set from the Blueprint class
 	TireFrontLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Tire Front Left"));
 	TireFrontLeft->SetupAttachment(GetMesh(), FName("VisWheel_FL"));
@@ -123,6 +128,8 @@ void AMower3OffroadCar::Tick(float DeltaSeconds)
 	// ChaosVehicleMovement->SetLeftThrottleInput(-1.f);
 	// ChaosVehicleMovement->SetRightThrottleInput(1.f);
 
+	
+
 	ReplaceOrRemoveGrass(false);
 	// ReplaceOrRemoveGrass(true);
 }
@@ -130,17 +137,30 @@ void AMower3OffroadCar::Tick(float DeltaSeconds)
 void AMower3OffroadCar::BeginPlay()
 {
 	Super::BeginPlay();
+	Chassis->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
+	Chassis->OverlapComponent(const FVector& Pos, const FQuat& Rot, const FCollisionShape& CollisionShape);
 	
 	SIOClientComponent->OnNativeEvent(TEXT("processedImage"), [this](const FString& Event,
 																  const TSharedPtr<FJsonValue>& Message)
 	{
 		// UE_LOG(LogTemp, Warning, TEXT("Received: %s"), *USIOJConvert::ToJsonString(Message));
-		// as object
 		TSharedPtr<FJsonObject> JsonObject = Message->AsObject();
-		// as string
-		FString name = JsonObject->GetStringField("name");
-		// log
-		UE_LOG(LogTemp, Warning, TEXT("Received name: %s"), *name);
+		// FString name = JsonObject->GetStringField("name");
+		// UE_LOG(LogTemp, Warning, TEXT("Received name: %s"), *name);
+
+		auto LeftThrottle = JsonObject->GetField<EJson::Number>("leftThrottle");
+		auto RightThrottle = JsonObject->GetField<EJson::Number>("rightThrottle");
+		if(LeftThrottle->Type != EJson::Number || RightThrottle->Type != EJson::Number)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Received LeftThrottle or RightThrottle is not a number"));
+			return;
+		}
+		auto LeftThrottleValue = LeftThrottle->AsNumber();
+		auto RightThrottleValue = RightThrottle->AsNumber();
+		UE_LOG(LogTemp, Warning, TEXT("Received LeftThrottle: %f"), LeftThrottleValue);
+		UE_LOG(LogTemp, Warning, TEXT("Received RightThrottle: %f"), RightThrottleValue);
+		ChaosVehicleMovement->SetLeftThrottleInput(LeftThrottleValue);
+		ChaosVehicleMovement->SetRightThrottleInput(RightThrottleValue);
 	});
 
 	// Get the location and rotation of the existing scene capture component
@@ -172,6 +192,24 @@ void AMower3OffroadCar::BeginPlay()
 	}
 	// log the number of capture managers
 	UE_LOG(LogTemp, Warning, TEXT("Number of Capture Managers: %d"), CaptureManagers.Num());
+}
+
+void AMower3OffroadCar::NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPrimitiveComponent* OtherComp,
+	bool bSelfMoved, FVector HitLocation, FVector HitNormal, FVector NormalImpulse, const FHitResult& Hit)
+{
+	Super::NotifyHit(MyComp, Other, OtherComp, bSelfMoved, HitLocation, HitNormal, NormalImpulse, Hit);
+}
+
+void AMower3OffroadCar::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+                              FVector NormalImpulse, const FHitResult& Hit)
+{
+	UE_LOG(LogTemp, Warning, TEXT("OnHit"));
+	UE_LOG(LogTemp, Warning, TEXT("HitComponent: %s"), *HitComponent->GetName());
+	UE_LOG(LogTemp, Warning, TEXT("OtherActor: %s"), *OtherActor->GetName());
+	UE_LOG(LogTemp, Warning, TEXT("OtherComp: %s"), *OtherComp->GetName());
+	UE_LOG(LogTemp, Warning, TEXT("NormalImpulse: %s"), *NormalImpulse.ToString());
+	UE_LOG(LogTemp, Warning, TEXT("Hit: %s"), *Hit.ToString());
+	
 }
 
 void AMower3OffroadCar::ReplaceOrRemoveGrass(const bool bDebug, const FString& grassNameToReplace)
