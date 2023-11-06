@@ -7,6 +7,7 @@
 #include "Mower3OffroadCar.generated.h"
 
 
+class UBoxComponent;
 
 USTRUCT()
 struct FAiVehicleInputs
@@ -72,6 +73,10 @@ class MOWER3_API AMower3OffroadCar : public AMower3Pawn
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Meshes, meta = (AllowPrivateAccess = "true"))
 	UStaticMesh* ParentStaticMesh;
 
+	// Collision Box
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Meshes, meta = (AllowPrivateAccess = "true"))
+	UBoxComponent* MyBoxComponent;
+	
 private:
 	FAiVehicleInputs AiVehicleInputs;
 	
@@ -85,7 +90,11 @@ public:
 	virtual void NotifyHit( class UPrimitiveComponent* MyComp, class AActor* Other, class UPrimitiveComponent* OtherComp, bool bSelfMoved,
 		FVector HitLocation, FVector HitNormal, FVector NormalImpulse, const FHitResult& Hit ) override;
 
+	UFUNCTION()
 	void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+	UFUNCTION()
+	void OnBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+	                    int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 	
 	void ReplaceOrRemoveGrass( const bool bDebug = false, const FString& grassNameToReplace = "");
 };

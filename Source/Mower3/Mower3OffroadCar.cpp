@@ -8,41 +8,46 @@
 #include "Mower3OffroadWheelRear.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
 #include "FoliageInstancedStaticMeshComponent.h"
+#include "InstancedFoliageActor.h"
 #include "MowerVehicleMovementComponent.h"
 #include "SocketIOClientComponent.h"
+#include "Components/BoxComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
+#include "Engine/StaticMeshActor.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "GameFramework/SpringArmComponent.h"
 
 AMower3OffroadCar::AMower3OffroadCar(const FObjectInitializer& ObjectInitializer) :
 Super(ObjectInitializer.SetDefaultSubobjectClass<UMowerVehicleMovementComponent>(VehicleMovementComponentName))
 {
+	MyBoxComponent = CreateDefaultSubobject<UBoxComponent>(TEXT("Box Component"));
+	MyBoxComponent->SetupAttachment(GetMesh());
+	
 	// construct the mesh components
 	Chassis = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Chassis"));
 	Chassis->SetupAttachment(GetMesh());
-	Chassis->SetNotifyRigidBodyCollision(true);
-	Chassis->SetCollisionProfileName(FName("BlockAllDynamic"));
-	Chassis->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Block);
+	// Chassis->SetNotifyRigidBodyCollision(true); // Same as setting 'Simulation Generates Hit Events' in bp. This is for physics simulation, maybe not relevant here.
+	// Chassis->SetCollisionProfileName(FName("BlockAllDynamic"));
+	// Chassis->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Block);
 	// Chassis->SetCollisionResponseToChannel(ECollisionChannel::ECC_WorldDynamic, ECollisionResponse::ECR_Block);
-	
 	
 	// NOTE: tire sockets are set from the Blueprint class
 	TireFrontLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Tire Front Left"));
 	TireFrontLeft->SetupAttachment(GetMesh(), FName("VisWheel_FL"));
-	TireFrontLeft->SetCollisionProfileName(FName("NoCollision"));
+	// TireFrontLeft->SetCollisionProfileName(FName("NoCollision"));
 
 	TireFrontRight = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Tire Front Right"));
 	TireFrontRight->SetupAttachment(GetMesh(), FName("VisWheel_FR"));
-	TireFrontRight->SetCollisionProfileName(FName("NoCollision"));
+	// TireFrontRight->SetCollisionProfileName(FName("NoCollision"));
 	TireFrontRight->SetRelativeRotation(FRotator(0.0f, 180.0f, 0.0f));
 
 	TireRearLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Tire Rear Left"));
 	TireRearLeft->SetupAttachment(GetMesh(), FName("VisWheel_BL"));
-	TireRearLeft->SetCollisionProfileName(FName("NoCollision"));
+	// TireRearLeft->SetCollisionProfileName(FName("NoCollision"));
 
 	TireRearRight = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Tire Rear Right"));
 	TireRearRight->SetupAttachment(GetMesh(), FName("VisWheel_BR"));
-	TireRearRight->SetCollisionProfileName(FName("NoCollision"));
+	// TireRearRight->SetCollisionProfileName(FName("NoCollision"));
 	TireRearRight->SetRelativeRotation(FRotator(0.0f, 180.0f, 0.0f));
 
 	// adjust the cameras
@@ -134,11 +139,75 @@ void AMower3OffroadCar::Tick(float DeltaSeconds)
 	// ReplaceOrRemoveGrass(true);
 }
 
+
+void AMower3OffroadCar::OnBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	// if other actor is a static mesh actor then log it
+	if(OtherActor->IsA(AStaticMeshActor::StaticClass()))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("OtherActor is a static mesh actor"));
+	}
+	
+	// log tags array of other actor
+	for(auto tag: OtherActor->Tags)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Tag: %s"), *tag.ToString());
+	}
+	const TSet<FName> SetOfTagsToAccept = {"Tree", "Wall"};
+	// get the tag of the other actor and check if it is in the set of tags to accept
+	// first check if the other actor has any tags
+	if(OtherActor->Tags.Num() == 0)
+	{
+		return;
+	}
+	const FName OtherActorTag = OtherActor->Tags[0];
+	if(!SetOfTagsToAccept.Contains(OtherActorTag))
+	{
+		return;
+	}
+		
+	UE_LOG(LogTemp, Warning, TEXT("OnBeginOverlap"));
+	// log the overlapped component and other component
+	UE_LOG(LogTemp, Warning, TEXT("OverlappedComp: %s"), *OverlappedComp->GetName());
+	UE_LOG(LogTemp, Warning, TEXT("OtherComp: %s"), *OtherComp->GetName());
+	// log the other actor
+	UE_LOG(LogTemp, Warning, TEXT("OtherActor: %s"), *OtherActor->GetName());
+	// log the other body index
+	UE_LOG(LogTemp, Warning, TEXT("OtherBodyIndex: %d"), OtherBodyIndex);
+	// log whether the overlap was from a sweep
+	UE_LOG(LogTemp, Warning, TEXT("bFromSweep: %d"), bFromSweep);
+	// log the sweep result
+	UE_LOG(LogTemp, Warning, TEXT("SweepResult: %s"), *SweepResult.ToString());
+	
+}
+// ( FComponentBeginOverlapSignature, UPrimitiveComponent, OnComponentBeginOverlap, UPrimitiveComponent*, OverlappedComponent, AActor*, OtherActor, UPrimitiveComponent*, OtherComp, int32, OtherBodyIndex, bool, bFromSweep, const FHitResult &, SweepResult);
+void AMower3OffroadCar::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+							  FVector NormalImpulse, const FHitResult& Hit)
+{
+	UE_LOG(LogTemp, Warning, TEXT("OnHit"));
+	UE_LOG(LogTemp, Warning, TEXT("HitComponent: %s"), *HitComponent->GetName());
+	UE_LOG(LogTemp, Warning, TEXT("OtherActor: %s"), *OtherActor->GetName());
+	UE_LOG(LogTemp, Warning, TEXT("OtherComp: %s"), *OtherComp->GetName());
+	UE_LOG(LogTemp, Warning, TEXT("NormalImpulse: %s"), *NormalImpulse.ToString());
+	UE_LOG(LogTemp, Warning, TEXT("Hit: %s"), *Hit.ToString());
+	
+}
+
 void AMower3OffroadCar::BeginPlay()
 {
 	Super::BeginPlay();
-	Chassis->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
-	Chassis->OverlapComponent(const FVector& Pos, const FQuat& Rot, const FCollisionShape& CollisionShape);
+	// Chassis->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
+	// TireFrontLeft->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
+	// TireFrontRight->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
+	// TireRearLeft->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
+	// TireRearRight->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
+	// MyBoxComponent->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
+	// GetMesh()->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
+	// add onbeginoverlap event
+	MyBoxComponent->OnComponentBeginOverlap.AddDynamic(this, &AMower3OffroadCar::OnBeginOverlap);
+	// TireFrontLeft->OnComponentBeginOverlap.AddDynamic(this, &AMower3OffroadCar::OnBeginOverlap);
+
 	
 	SIOClientComponent->OnNativeEvent(TEXT("processedImage"), [this](const FString& Event,
 																  const TSharedPtr<FJsonValue>& Message)
@@ -167,7 +236,6 @@ void AMower3OffroadCar::BeginPlay()
 	FVector ExistingLocation = MySceneCapture1->GetComponentLocation();
 	FRotator ExistingRotation = MySceneCapture1->GetComponentRotation();
 
-	// Loop 10 times
 	for (int i = 0; i < 0; i++)
 	{
 		UCaptureManager* TempCaptureManager = NewObject<UCaptureManager>(this);
@@ -200,17 +268,10 @@ void AMower3OffroadCar::NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UP
 	Super::NotifyHit(MyComp, Other, OtherComp, bSelfMoved, HitLocation, HitNormal, NormalImpulse, Hit);
 }
 
-void AMower3OffroadCar::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
-                              FVector NormalImpulse, const FHitResult& Hit)
-{
-	UE_LOG(LogTemp, Warning, TEXT("OnHit"));
-	UE_LOG(LogTemp, Warning, TEXT("HitComponent: %s"), *HitComponent->GetName());
-	UE_LOG(LogTemp, Warning, TEXT("OtherActor: %s"), *OtherActor->GetName());
-	UE_LOG(LogTemp, Warning, TEXT("OtherComp: %s"), *OtherComp->GetName());
-	UE_LOG(LogTemp, Warning, TEXT("NormalImpulse: %s"), *NormalImpulse.ToString());
-	UE_LOG(LogTemp, Warning, TEXT("Hit: %s"), *Hit.ToString());
-	
-}
+
+
+
+
 
 void AMower3OffroadCar::ReplaceOrRemoveGrass(const bool bDebug, const FString& grassNameToReplace)
 {
