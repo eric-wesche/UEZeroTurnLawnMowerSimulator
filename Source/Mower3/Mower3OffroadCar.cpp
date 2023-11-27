@@ -108,8 +108,8 @@ Super(ObjectInitializer.SetDefaultSubobjectClass<UMowerVehicleMovementComponent>
 	
 	MyCaptureManager->ColorCaptureComponents = MySceneCapture1;
 
-	// MySceneCapture4 = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("MySceneCapture4"));
-	// MySceneCapture4->SetupAttachment(GetMesh());
+	MySceneCapture4 = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("MySceneCapture4"));
+	MySceneCapture4->SetupAttachment(GetMesh());
 
 	// MyCaptureManager2 = CreateDefaultSubobject<UCaptureManager>(TEXT("MyCaptureManager2"));
 	
@@ -138,7 +138,6 @@ void AMower3OffroadCar::Tick(float DeltaSeconds)
 	ReplaceOrRemoveGrass(false);
 	// ReplaceOrRemoveGrass(true);
 }
-
 
 void AMower3OffroadCar::OnBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
@@ -181,33 +180,11 @@ void AMower3OffroadCar::OnBeginOverlap(UPrimitiveComponent* OverlappedComp, AAct
 	UE_LOG(LogTemp, Warning, TEXT("SweepResult: %s"), *SweepResult.ToString());
 	
 }
-// ( FComponentBeginOverlapSignature, UPrimitiveComponent, OnComponentBeginOverlap, UPrimitiveComponent*, OverlappedComponent, AActor*, OtherActor, UPrimitiveComponent*, OtherComp, int32, OtherBodyIndex, bool, bFromSweep, const FHitResult &, SweepResult);
-void AMower3OffroadCar::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
-							  FVector NormalImpulse, const FHitResult& Hit)
-{
-	UE_LOG(LogTemp, Warning, TEXT("OnHit"));
-	UE_LOG(LogTemp, Warning, TEXT("HitComponent: %s"), *HitComponent->GetName());
-	UE_LOG(LogTemp, Warning, TEXT("OtherActor: %s"), *OtherActor->GetName());
-	UE_LOG(LogTemp, Warning, TEXT("OtherComp: %s"), *OtherComp->GetName());
-	UE_LOG(LogTemp, Warning, TEXT("NormalImpulse: %s"), *NormalImpulse.ToString());
-	UE_LOG(LogTemp, Warning, TEXT("Hit: %s"), *Hit.ToString());
-	
-}
 
 void AMower3OffroadCar::BeginPlay()
 {
 	Super::BeginPlay();
-	// Chassis->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
-	// TireFrontLeft->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
-	// TireFrontRight->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
-	// TireRearLeft->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
-	// TireRearRight->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
-	// MyBoxComponent->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
-	// GetMesh()->OnComponentHit.AddDynamic(this, &AMower3OffroadCar::OnHit);
-	// add onbeginoverlap event
-	MyBoxComponent->OnComponentBeginOverlap.AddDynamic(this, &AMower3OffroadCar::OnBeginOverlap);
-	// TireFrontLeft->OnComponentBeginOverlap.AddDynamic(this, &AMower3OffroadCar::OnBeginOverlap);
-
+	MyBoxComponent->OnComponentBeginOverlap.AddDynamic(this, &AMower3OffroadCar::OnBeginOverlap);\
 	
 	SIOClientComponent->OnNativeEvent(TEXT("processedImage"), [this](const FString& Event,
 																  const TSharedPtr<FJsonValue>& Message)
@@ -226,8 +203,8 @@ void AMower3OffroadCar::BeginPlay()
 		}
 		auto LeftThrottleValue = LeftThrottle->AsNumber();
 		auto RightThrottleValue = RightThrottle->AsNumber();
-		UE_LOG(LogTemp, Warning, TEXT("Received LeftThrottle: %f"), LeftThrottleValue);
-		UE_LOG(LogTemp, Warning, TEXT("Received RightThrottle: %f"), RightThrottleValue);
+		// UE_LOG(LogTemp, Warning, TEXT("Received LeftThrottle: %f"), LeftThrottleValue);
+		// UE_LOG(LogTemp, Warning, TEXT("Received RightThrottle: %f"), RightThrottleValue);
 		ChaosVehicleMovement->SetLeftThrottleInput(LeftThrottleValue);
 		ChaosVehicleMovement->SetRightThrottleInput(RightThrottleValue);
 	});
@@ -261,17 +238,6 @@ void AMower3OffroadCar::BeginPlay()
 	// log the number of capture managers
 	UE_LOG(LogTemp, Warning, TEXT("Number of Capture Managers: %d"), CaptureManagers.Num());
 }
-
-void AMower3OffroadCar::NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPrimitiveComponent* OtherComp,
-	bool bSelfMoved, FVector HitLocation, FVector HitNormal, FVector NormalImpulse, const FHitResult& Hit)
-{
-	Super::NotifyHit(MyComp, Other, OtherComp, bSelfMoved, HitLocation, HitNormal, NormalImpulse, Hit);
-}
-
-
-
-
-
 
 void AMower3OffroadCar::ReplaceOrRemoveGrass(const bool bDebug, const FString& grassNameToReplace)
 {
