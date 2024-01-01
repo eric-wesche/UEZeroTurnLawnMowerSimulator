@@ -87,6 +87,9 @@ public:
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
+	bool ProjectWorldLocationToCapturedScreen(USceneCaptureComponent2D* InCaptureComponent,
+	                                          const FVector& InWorldLocation,
+	                                          const FIntPoint& InRenderTarget2DSize, FVector2D& OutPixel);
 
 	UFUNCTION(BlueprintCallable, Category = "ImageCapture")
 	void CaptureColorNonBlocking(USceneCaptureComponent2D* CaptureComponent, bool IsSegmentation = false);
