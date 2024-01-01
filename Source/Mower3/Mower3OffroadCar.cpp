@@ -121,9 +121,6 @@ Super(ObjectInitializer.SetDefaultSubobjectClass<UMowerVehicleMovementComponent>
 
 	MyCaptureManager->SIOClientComponent = SIOClientComponent;
 	// MyCaptureManager2->SIOClientComponent = SIOClientComponent;
-
-	 
-
 }
 
 void AMower3OffroadCar::Tick(float DeltaSeconds)
@@ -205,8 +202,8 @@ void AMower3OffroadCar::BeginPlay()
 		auto RightThrottleValue = RightThrottle->AsNumber();
 		// UE_LOG(LogTemp, Warning, TEXT("Received LeftThrottle: %f"), LeftThrottleValue);
 		// UE_LOG(LogTemp, Warning, TEXT("Received RightThrottle: %f"), RightThrottleValue);
-		ChaosVehicleMovement->SetLeftThrottleInput(LeftThrottleValue);
-		ChaosVehicleMovement->SetRightThrottleInput(RightThrottleValue);
+		// ChaosVehicleMovement->SetLeftThrottleInput(LeftThrottleValue);
+		// ChaosVehicleMovement->SetRightThrottleInput(RightThrottleValue);
 	});
 
 	// Get the location and rotation of the existing scene capture component
