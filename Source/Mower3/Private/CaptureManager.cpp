@@ -7,6 +7,7 @@
 #include "RHICommandList.h"
 #include "SocketIOClientComponent.h"
 #include "ImageUtils.h"
+#include "Kismet/GameplayStatics.h"
 
 
 // Sets default values for this component's properties
@@ -164,10 +165,55 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
         RenderRequestQueue.Peek(nextRenderRequest);
         if (nextRenderRequest) { // nullptr check
             if (nextRenderRequest->RenderFence.IsFenceComplete()) { // Check if rendering is done, indicated by RenderFence
-
+               
                 // Get image for this frame
                 TArray<FColor> ImageData = nextRenderRequest->Image;
 
+                
+                TArray<AActor*> FoundActors;
+                UGameplayStatics::GetAllActorsWithTag(GetWorld(), FName(TEXT("Tree")), FoundActors);
+                for (int32 i = 0; i < FoundActors.Num(); i++)
+                {
+                    FVector InWorldLocation = FoundActors[i]->GetActorLocation();
+                    USceneCaptureComponent2D* InCaptureComponent = ColorCaptureComponents;
+                    FIntPoint InRenderTarget2DSize = FIntPoint(ScreenImageProperties.width, ScreenImageProperties.height);
+                    FVector2D OutPixel;
+                    ProjectWorldLocationToCapturedScreen(InCaptureComponent, InWorldLocation, InRenderTarget2DSize, OutPixel);
+                    // Draw OutPixel onto image as a red dot
+                    int32 x = OutPixel.X;
+                    int32 y = OutPixel.Y;
+                    int32 width = ScreenImageProperties.width;
+                    int32 height = ScreenImageProperties.height;
+                    int32 radius = 5;
+                    for (int32 _i = -radius; _i <= radius; _i++) {
+                        for (int32 j = -radius; j <= radius; j++) {
+                            if (x + _i >= 0 && x + _i < width && y + j >= 0 && y + j < height) {
+                                ImageData[(y + j) * width + (x + _i)] = FColor(255, 0, 0, 255);
+                            }
+                        }
+                    }
+                }
+
+                // Do above but for every point in the volumne of the first actor found with tag tree, so as to fill the tree with red
+                // for (int32 i = 0; i < FoundActors.Num(); i++) {
+                //     InWorldLocation = FoundActors[i]->GetActorLocation();
+                //     ProjectWorldLocationToCapturedScreen(InCaptureComponent, InWorldLocation, InRenderTarget2DSize, OutPixel);
+                //     int32 x = OutPixel.X;
+                //     int32 y = OutPixel.Y;
+                //     int32 width = ScreenImageProperties.width;
+                //     int32 height = ScreenImageProperties.height;
+                //     int32 radius = 5;
+                //     for (i = -radius; i <= radius; i++) {
+                //         for (int32 j = -radius; j <= radius; j++) {
+                //             if (x + i >= 0 && x + i < width && y + j >= 0 && y + j < height) {
+                //                 ImageData[(y + j) * width + (x + i)] = FColor(255, 0, 0, 255);
+                //             }
+                //         }
+                //     }
+                // }
+                
+                 
+                
                 // Compress image data to PNG format
                 TArray64<uint8> DstData;
                 FImageUtils::PNGCompressImageArray(ScreenImageProperties.width, ScreenImageProperties.height, ImageData,
@@ -180,13 +226,11 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
                 TArray<uint8> NDstData(SrcPtr, SrcCount); // Create the destination array using the pointer and the count
                 FString base64 = FBase64::Encode(NDstData);
 
+                // Create json object and emit to socket
                 auto JsonObject = USIOJConvert::MakeJsonObject();
                 JsonObject->SetStringField(TEXT("name"), InstanceName);
                 JsonObject->SetStringField(TEXT("image"), base64);
                 SIOClientComponent->EmitNative(TEXT("imageJson"), JsonObject);
-                
-                // Send to the server
-                // SIOClientComponent->EmitNative("image", base64);
                 
                 // log emitting image for capture manager name
                 // UE_LOG(LogTemp, Warning, TEXT("Emitting image for capture manager name: %s"), *InstanceName);
@@ -201,6 +245,39 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
             }
         }
     }
+}
+
+bool UCaptureManager::ProjectWorldLocationToCapturedScreen(USceneCaptureComponent2D* InCaptureComponent, const FVector& InWorldLocation,
+                                                                            const FIntPoint& InRenderTarget2DSize,
+                                                                            FVector2D& OutPixel)
+{
+    // Render Target's Rectangle
+    verify(InRenderTarget2DSize.GetMin() > 0);
+    const FIntRect renderTargetRect(0, 0, InRenderTarget2DSize.X, InRenderTarget2DSize.Y);
+
+    // Initialise Viewinfo for projection matrix from [InCaptureComponent]
+    FMinimalViewInfo minimalViewInfo;
+    InCaptureComponent->GetCameraView(0.f, minimalViewInfo);
+
+    // Fetch [captureComponent]'s [CustomProjectionMatrix]
+    TOptional<FMatrix> customProjectionMatrix;
+    if(InCaptureComponent->bUseCustomProjectionMatrix) {
+        customProjectionMatrix = InCaptureComponent->CustomProjectionMatrix;
+    }
+
+    // Calculate [cameraViewProjectionMatrix]
+    FMatrix captureViewMatrix, captureProjectionMatrix, captureViewProjectionMatrix;
+    UGameplayStatics::CalculateViewProjectionMatricesFromMinimalView(minimalViewInfo, customProjectionMatrix,
+        captureViewMatrix, captureProjectionMatrix, captureViewProjectionMatrix);
+
+    bool result = FSceneView::ProjectWorldToScreen(InWorldLocation, renderTargetRect,
+                                                   captureViewProjectionMatrix, OutPixel);
+
+    UE_LOG(LogTemp, Verbose, TEXT("ON [%s] CAPTURED SCREEN: WORLD LOCATION [%s] HAS LOCAL PIXEL COORDINATES: (X) %lf [over %d] OR (Y) %lf [over %d]"),
+                             *InCaptureComponent->GetName(), *InWorldLocation.ToString(),
+                             OutPixel.X, InRenderTarget2DSize.X,
+                             OutPixel.Y, InRenderTarget2DSize.Y);
+    return result;
 }
 
 AsyncInferenceTask::AsyncInferenceTask(const TArray<FColor>& RawImage, const FScreenImageProperties ScreenImage,
