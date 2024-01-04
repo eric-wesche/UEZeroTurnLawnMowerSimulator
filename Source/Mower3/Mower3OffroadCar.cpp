@@ -233,7 +233,7 @@ void AMower3OffroadCar::BeginPlay()
 		CaptureManagers.Add(TempCaptureManager);
 	}
 	// log the number of capture managers
-	UE_LOG(LogTemp, Warning, TEXT("Number of Capture Managers: %d"), CaptureManagers.Num());
+	// UE_LOG(LogTemp, Warning, TEXT("Number of Capture Managers: %d"), CaptureManagers.Num());
 }
 
 void AMower3OffroadCar::ReplaceOrRemoveGrass(const bool bDebug, const FString& grassNameToReplace)

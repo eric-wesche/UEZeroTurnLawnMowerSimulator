@@ -29,7 +29,7 @@ void UCaptureManager::BeginPlay()
         return;
     }
     // log defaultsubobject name
-    UE_LOG(LogTemp, Warning, TEXT("ColorCaptureComponents name: %s"), *ColorCaptureComponents->GetName());
+    // UE_LOG(LogTemp, Warning, TEXT("ColorCaptureComponents name: %s"), *ColorCaptureComponents->GetName());
     SetupColorCaptureComponent(ColorCaptureComponents);
 }
 
