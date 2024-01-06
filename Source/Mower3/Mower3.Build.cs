@@ -10,7 +10,7 @@ public class Mower3 : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
-			"Foliage", "Landscape",
+			"Foliage", "Landscape", "ProceduralMeshComponent",
 			// "SocketIOClient", "SIOJson"
 		});
 
