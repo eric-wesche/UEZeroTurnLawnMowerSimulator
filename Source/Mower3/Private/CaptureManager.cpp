@@ -149,7 +149,12 @@ TArray<FVector> UCaptureManager::GetOutlineOfStaticMesh(UStaticMesh* StaticMesh,
 
     // Get the section from the static mesh asset
     UKismetProceduralMeshLibrary::GetSectionFromStaticMesh(StaticMesh, 0, 0, Vertices, Triangles, Normals, UVs, Tangents);
-    // return Vertices;
+    // Convert the vertex positions to world space
+    for (int32 i = 0; i < Vertices.Num(); i++)
+    {
+        Vertices[i] = ComponentToWorldTransform.TransformPosition(Vertices[i]);
+    }
+    return Vertices;
 
     // Iterate over the triangles and increment the vertex counts
     for (int32 i = 0; i < Triangles.Num(); i += 3)
