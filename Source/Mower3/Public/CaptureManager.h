@@ -90,7 +90,9 @@ public:
 	bool ProjectWorldLocationToCapturedScreen(USceneCaptureComponent2D* InCaptureComponent,
 	                                          const FVector& InWorldLocation,
 	                                          const FIntPoint& InRenderTarget2DSize, FVector2D& OutPixel);
-
+	void ProjectWorldPointToImage(TArray<FColor>& ImageData, FVector InWorldLocation, int32 radius);
+	TArray<FVector> GetOutlineOfStaticMesh(UStaticMesh* StaticMesh, FTransform& ComponentToWorldTransform);
+	
 	UFUNCTION(BlueprintCallable, Category = "ImageCapture")
 	void CaptureColorNonBlocking(USceneCaptureComponent2D* CaptureComponent, bool IsSegmentation = false);
 

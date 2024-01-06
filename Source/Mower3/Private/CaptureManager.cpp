@@ -7,6 +7,9 @@
 #include "RHICommandList.h"
 #include "SocketIOClientComponent.h"
 #include "ImageUtils.h"
+#include "KismetProceduralMeshLibrary.h"
+#include "ProceduralMeshComponent.h"
+#include "Engine/StaticMeshActor.h"
 #include "Kismet/GameplayStatics.h"
 
 
@@ -132,6 +135,82 @@ void UCaptureManager::CaptureColorNonBlocking(USceneCaptureComponent2D* CaptureC
     renderRequest->RenderFence.BeginFence(false);
 }
 
+TArray<FVector> UCaptureManager::GetOutlineOfStaticMesh(UStaticMesh* StaticMesh, FTransform& ComponentToWorldTransform)
+{
+    // Declare the map or set to store the vertex indices and counts
+    TMap<int32, int32> VertexCounts;
+
+    // Declare the arrays for the geometry data
+    TArray<FVector> Vertices;
+    TArray<int32> Triangles;
+    TArray<FVector> Normals;
+    TArray<FVector2D> UVs;
+    TArray<FProcMeshTangent> Tangents;
+
+    // Get the section from the static mesh asset
+    UKismetProceduralMeshLibrary::GetSectionFromStaticMesh(StaticMesh, 0, 0, Vertices, Triangles, Normals, UVs, Tangents);
+    // return Vertices;
+
+    // Iterate over the triangles and increment the vertex counts
+    for (int32 i = 0; i < Triangles.Num(); i += 3)
+    {
+        // Get the three vertex indices of the current triangle
+        int32 IndexA = Triangles[i];
+        int32 IndexB = Triangles[i + 1];
+        int32 IndexC = Triangles[i + 2];
+
+        // Increment the counts of each vertex index
+        VertexCounts.FindOrAdd(IndexA)++;
+        VertexCounts.FindOrAdd(IndexB)++;
+        VertexCounts.FindOrAdd(IndexC)++;
+    }
+
+    // Declare an array to store the boundary vertices
+    TArray<FVector> BoundaryVertices;
+
+    // Loop over the vertex counts and collect the boundary vertices
+    for (auto& Pair : VertexCounts)
+    {
+        // Get the vertex index and count
+        int32 Index = Pair.Key;
+        int32 Count = Pair.Value;
+
+        // If the count is one, the vertex is on the boundary
+        if (Count == 1)
+        {
+            // Get the vertex position from the vertices array
+            FVector Vertex = Vertices[Index];
+
+            // Transform the vertex position by the component-to-world transform
+            Vertex = ComponentToWorldTransform.TransformPosition(Vertex);
+            
+            // Add the vertex to the boundary vertices array
+            BoundaryVertices.Add(Vertex);
+        }
+    }
+    return BoundaryVertices;
+}
+
+void UCaptureManager::ProjectWorldPointToImage(TArray<FColor>& ImageData, FVector InWorldLocation, int32 radius = 5)
+{
+    USceneCaptureComponent2D* InCaptureComponent = ColorCaptureComponents;
+    FIntPoint InRenderTarget2DSize = FIntPoint(ScreenImageProperties.width, ScreenImageProperties.height);
+    FVector2D OutPixel;
+    ProjectWorldLocationToCapturedScreen(InCaptureComponent, InWorldLocation, InRenderTarget2DSize, OutPixel);
+    // Draw OutPixel onto image as a red dot
+    int32 x = OutPixel.X;
+    int32 y = OutPixel.Y;
+    int32 width = ScreenImageProperties.width;
+    int32 height = ScreenImageProperties.height;
+    for (int32 _i = -radius; _i <= radius; _i++) {
+        for (int32 j = -radius; j <= radius; j++) {
+            if (x + _i >= 0 && x + _i < width && y + j >= 0 && y + j < height) {
+                ImageData[(y + j) * width + (x + _i)] = FColor(255, 0, 0, 255);
+            }
+        }
+    }
+}
+
 /**
  * @brief If scene component is not running every frame, and this function is, then it will be reading the same data
  * from the texture over and over. TODO: check if this is true, and ensure no issues.
@@ -169,50 +248,42 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
                 // Get image for this frame
                 TArray<FColor> ImageData = nextRenderRequest->Image;
 
-                
                 TArray<AActor*> FoundActors;
                 UGameplayStatics::GetAllActorsWithTag(GetWorld(), FName(TEXT("Tree")), FoundActors);
+                
                 for (int32 i = 0; i < FoundActors.Num(); i++)
                 {
-                    FVector InWorldLocation = FoundActors[i]->GetActorLocation();
-                    USceneCaptureComponent2D* InCaptureComponent = ColorCaptureComponents;
-                    FIntPoint InRenderTarget2DSize = FIntPoint(ScreenImageProperties.width, ScreenImageProperties.height);
-                    FVector2D OutPixel;
-                    ProjectWorldLocationToCapturedScreen(InCaptureComponent, InWorldLocation, InRenderTarget2DSize, OutPixel);
-                    // Draw OutPixel onto image as a red dot
-                    int32 x = OutPixel.X;
-                    int32 y = OutPixel.Y;
-                    int32 width = ScreenImageProperties.width;
-                    int32 height = ScreenImageProperties.height;
-                    int32 radius = 5;
-                    for (int32 _i = -radius; _i <= radius; _i++) {
-                        for (int32 j = -radius; j <= radius; j++) {
-                            if (x + _i >= 0 && x + _i < width && y + j >= 0 && y + j < height) {
-                                ImageData[(y + j) * width + (x + _i)] = FColor(255, 0, 0, 255);
-                            }
-                        }
+                    // Convert the Actor to a StaticMeshActor, or continue if it fails
+                    AStaticMeshActor* StaticMeshActor = Cast<AStaticMeshActor>(FoundActors[i]);
+                    if (!StaticMeshActor) continue;
+                    // Get the StaticMeshComponent from the StaticMeshActor, or continue if it fails
+                    UStaticMeshComponent* StaticMeshComponent = StaticMeshActor->GetStaticMeshComponent();
+                    if (!StaticMeshComponent) continue;
+                    // Get the StaticMesh from the StaticMeshComponent, or continue if it fails
+                    UStaticMesh* StaticMesh = StaticMeshComponent->GetStaticMesh();
+                    if (!StaticMesh) continue;
+                    // Get the outline
+                    FTransform ComponentToWorldTransform = StaticMeshComponent->GetComponentTransform();
+                    TArray<FVector> BoundaryVertices = GetOutlineOfStaticMesh(StaticMesh, ComponentToWorldTransform);
+                
+                    // log size of BoundaryVertices
+                    UE_LOG(LogTemp, Warning, TEXT("BoundaryVertices size: %d"), BoundaryVertices.Num());
+                    for(FVector BoundaryVertex : BoundaryVertices) {
+                        FVector InWorldLocation = BoundaryVertex;
+                        // UE_LOG(LogTemp, Warning, TEXT("InWorldLocation: %s"), *InWorldLocation.ToString());
+                        // InWorldLocation.Z += 300;
+                        // UE_LOG(LogTemp, Warning, TEXT("InWorldLocation: %s"), *InWorldLocation.ToString());
+                        // DrawDebugPoint(GetWorld(), InWorldLocation, 3, FColor::Red, true, .1f, 255);
+
+                        ProjectWorldPointToImage(ImageData, InWorldLocation, 1);
                     }
                 }
-
+                
                 // Do above but for every point in the volumne of the first actor found with tag tree, so as to fill the tree with red
                 // for (int32 i = 0; i < FoundActors.Num(); i++) {
-                //     InWorldLocation = FoundActors[i]->GetActorLocation();
-                //     ProjectWorldLocationToCapturedScreen(InCaptureComponent, InWorldLocation, InRenderTarget2DSize, OutPixel);
-                //     int32 x = OutPixel.X;
-                //     int32 y = OutPixel.Y;
-                //     int32 width = ScreenImageProperties.width;
-                //     int32 height = ScreenImageProperties.height;
-                //     int32 radius = 5;
-                //     for (i = -radius; i <= radius; i++) {
-                //         for (int32 j = -radius; j <= radius; j++) {
-                //             if (x + i >= 0 && x + i < width && y + j >= 0 && y + j < height) {
-                //                 ImageData[(y + j) * width + (x + i)] = FColor(255, 0, 0, 255);
-                //             }
-                //         }
-                //     }
+                //     FVector InWorldLocation = FoundActors[i]->GetActorLocation();
+                //     ProjectWorldPointToImage(ImageData, InWorldLocation);
                 // }
-                
-                 
                 
                 // Compress image data to PNG format
                 TArray64<uint8> DstData;
@@ -246,6 +317,7 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
         }
     }
 }
+
 
 bool UCaptureManager::ProjectWorldLocationToCapturedScreen(USceneCaptureComponent2D* InCaptureComponent, const FVector& InWorldLocation,
                                                                             const FIntPoint& InRenderTarget2DSize,
