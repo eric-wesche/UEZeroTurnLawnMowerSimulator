@@ -233,6 +233,14 @@ void UCaptureManager::ProjectWorldPointToImage(TArray<FColor>& ImageData, FVecto
 	FIntPoint InRenderTarget2DSize = FIntPoint(ScreenImageProperties.width, ScreenImageProperties.height);
 	FVector2D OutPixel;
 	ProjectWorldLocationToCapturedScreen(InCaptureComponent, InWorldLocation, InRenderTarget2DSize, OutPixel);
+
+	FVector CaptureLocation = ColorCaptureComponents->GetComponentLocation();
+	FVector CaptureForward = ColorCaptureComponents->GetForwardVector();
+	float NearClipPlane = ColorCaptureComponents->CustomNearClippingPlane;
+	FVector LensCenter = CaptureLocation + CaptureForward * NearClipPlane;
+	// Subtract the LensCenter from the InWorldLocation to get the InWorldLocation in the coordinate system of the LensCenter. 
+	FVector InWorldLocationInLensCenterSpace = InWorldLocation - LensCenter;
+
 	// Draw OutPixel onto image as a red dot
 	int32 x = OutPixel.X;
 	int32 y = OutPixel.Y;
@@ -242,7 +250,7 @@ void UCaptureManager::ProjectWorldPointToImage(TArray<FColor>& ImageData, FVecto
 	{
 		for (int32 j = -radius; j <= radius; j++)
 		{
-			if (x + _i >= 0 && x + _i < width && y + j >= 0 && y + j < height)
+			if (x + _i >= 0 && x + _i < width && y + j >= 0 && y + j < height) // TODO: If it's not in the bounds it's not being captured. Check this beforehand and exit.
 			{
 				FColor color = ImageData[(y + j) * width + (x + _i)];
 				// ImageData[(y + j) * width + (x + _i)] = FColor(255, 0, 0, 55);

@@ -8,14 +8,13 @@
 #include "Mower3OffroadWheelRear.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
 #include "FoliageInstancedStaticMeshComponent.h"
-#include "InstancedFoliageActor.h"
 #include "MowerVehicleMovementComponent.h"
 #include "SocketIOClientComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/StaticMeshActor.h"
-#include "Engine/TextureRenderTarget2D.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "DrawDebugHelpers.h"
 
 AMower3OffroadCar::AMower3OffroadCar(const FObjectInitializer& ObjectInitializer) :
 Super(ObjectInitializer.SetDefaultSubobjectClass<UMowerVehicleMovementComponent>(VehicleMovementComponentName))
@@ -130,7 +129,12 @@ void AMower3OffroadCar::Tick(float DeltaSeconds)
 	// ChaosVehicleMovement->SetLeftThrottleInput(-1.f);
 	// ChaosVehicleMovement->SetRightThrottleInput(1.f);
 
-	
+	// {
+	// 	FVector CaptureLocation = MySceneCapture1->GetComponentLocation();
+	// 	FRotator CaptureRotation = MySceneCapture1->GetComponentRotation();
+	// 	float CaptureFOV = MySceneCapture1->FOVAngle;
+	// 	DrawDebugCamera(GetWorld(), CaptureLocation, CaptureRotation, CaptureFOV, 1.0f, FColor::Blue, false, 0.0f);
+	// }
 
 	ReplaceOrRemoveGrass(false);
 	// ReplaceOrRemoveGrass(true);
