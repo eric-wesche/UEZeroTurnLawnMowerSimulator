@@ -84,6 +84,7 @@ protected:
 	virtual void BeginPlay() override;
 
 public:
+	void ProcessImageData(FRenderRequest* nextRenderRequest);
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;

@@ -308,31 +308,19 @@ void UCaptureManager::ProjectWorldPointToImageAndDraw(TArray<FColor>& ImageData,
 	// Subtract the LensCenter from the InWorldLocation to get the InWorldLocation in the coordinate system of the LensCenter. 
 	FVector InWorldLocationInLensCenterSpace = InWorldLocation - LensCenter;
 
-	// Say that you have outpixel but also 2 other pixels that make up a triangle. draw the triangle onto the image, meaning needs to fill in all the pixels in the triangle using its vertices.
-	// FVector2D Outpixel2 = OutPixel + FVector2D(0, 1);
-	// FVector2D Outpixel3 = OutPixel + FVector2D(1, 0);
-
 	// Draw OutPixel onto image as a red dot
 	int32 x = OutPixel.X;
 	int32 y = OutPixel.Y;
 	int32 width = ScreenImageProperties.width;
 	int32 height = ScreenImageProperties.height;
-	// UE_LOG(LogTemp, Warning, TEXT("color: %s"), *ImageData[0].ToString());
 	for (int32 _i = -radius; _i <= radius; _i++)
 	{
 		for (int32 j = -radius; j <= radius; j++)
 		{
-			if (x + _i >= 0 && x + _i < width && y + j >= 0 && y + j < height) // TODO: If it's not in the bounds it's not being captured. Check this beforehand and exit.
+			if (x + _i >= 0 && x + _i < width && y + j >= 0 && y + j < height)
+			// TODO: If it's not in the bounds it's not being captured. Check this beforehand and exit.
 			{
 				FColor color = ImageData[(y + j) * width + (x + _i)];
-				// log color
-				// UE_LOG(LogTemp, Warning, TEXT("color: %s"), *color.ToString());
-				// log if A is not 128
-				// if (color.A != 128)
-				// {
-				// 	UE_LOG(LogTemp, Warning, TEXT("A is not 128: %d"), color.A);
-				// }
-				// ImageData[(y + j) * width + (x + _i)] = FColor(255, 0, 0, 55);
 				ImageData[(y + j) * width + (x + _i)] = AddTransparentRed(color);
 			}
 		}
@@ -374,6 +362,84 @@ void GetPixelsInTriangle(TArray<FVector2D> Triangle, TArray<FVector2D>& Pixels)
 				Pixels.Add(p);
 			}
 		}
+	}
+}
+
+void UCaptureManager::ProcessImageData(FRenderRequest* nextRenderRequest)
+{
+	// Check if rendering is done, indicated by RenderFence
+	if (nextRenderRequest->RenderFence.IsFenceComplete())
+	{
+		// Get image for this frame
+		TArray<FColor> ImageData = nextRenderRequest->Image;
+
+		TArray<AActor*> FoundActors;
+		TSet<FString> MyStrings = {"Tree", "Wall"};
+		for (auto& Str : MyStrings)
+		{
+			TArray<AActor*> TempFoundActors;
+			UGameplayStatics::GetAllActorsWithTag(GetWorld(), FName(*Str), TempFoundActors);
+			FoundActors.Append(TempFoundActors);
+		}
+
+		ParallelFor(FoundActors.Num(), [&](int32 i)
+		{
+			AStaticMeshActor* StaticMeshActor = Cast<AStaticMeshActor>(FoundActors[i]);
+			if (!StaticMeshActor)
+			{
+				return;
+			}
+			UStaticMeshComponent* StaticMeshComponent = StaticMeshActor->GetStaticMeshComponent();
+			if (!StaticMeshComponent)
+			{
+				return;
+			}
+			UStaticMesh* StaticMesh = StaticMeshComponent->GetStaticMesh();
+			if (!StaticMesh)
+			{
+				return;
+			}
+
+			FTransform ComponentToWorldTransform = StaticMeshComponent->GetComponentTransform();
+			TArray<FVector> Vertices = GetOutlineOfStaticMesh(StaticMesh, ComponentToWorldTransform);
+
+			for (int vi = 0; vi < Vertices.Num(); vi++)
+			{
+				FVector InWorldLocation = Vertices[vi];
+				ProjectWorldPointToImageAndDraw(ImageData, InWorldLocation, 1);
+			}
+		});
+
+		// Compress image data to PNG format
+		TArray64<uint8> DstData;
+		FImageUtils::PNGCompressImageArray(ScreenImageProperties.width, ScreenImageProperties.height, ImageData,
+		                                   DstData);
+
+		// Convert data to base64 string
+		DstData.Shrink(); // Shrink the source array to remove any extra slack
+		uint8* SrcPtr = DstData.GetData(); // Get a pointer to the raw data of the source array
+		int32 SrcCount = DstData.Num(); // Get the number of elements in the source array
+		TArray<uint8> NDstData(SrcPtr, SrcCount);
+		// Create the destination array using the pointer and the count
+		FString base64 = FBase64::Encode(NDstData);
+
+		// Create json object and emit to socket
+		auto JsonObject = USIOJConvert::MakeJsonObject();
+		JsonObject->SetStringField(TEXT("name"), InstanceName);
+		JsonObject->SetStringField(TEXT("image"), base64);
+		SIOClientComponent->EmitNative(TEXT("imageJson"), JsonObject);
+
+		// log emitting image for capture manager name
+		// UE_LOG(LogTemp, Warning, TEXT("Emitting image for capture manager name: %s"), *InstanceName);
+		auto val = InstanceName;
+		// create new inference task
+		FAsyncTask<AsyncInferenceTask>* MyTask =
+			new FAsyncTask<AsyncInferenceTask>(nextRenderRequest->Image, ScreenImageProperties,
+			                                   ModelImageProperties);
+		InferenceTaskQueue.Enqueue(MyTask);
+		// Delete the first element from RenderQueue
+		RenderRequestQueue.Pop();
+		delete nextRenderRequest;
 	}
 }
 
@@ -419,106 +485,7 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 		RenderRequestQueue.Peek(nextRenderRequest);
 		if (nextRenderRequest)
 		{
-			// nullptr check
-			if (nextRenderRequest->RenderFence.IsFenceComplete())
-			{
-				// Check if rendering is done, indicated by RenderFence
-
-				// // Get image for this frame
-				TArray<FColor> ImageData = nextRenderRequest->Image;
-				// // Get the texture target of the component
-				// UTextureRenderTarget2D* TextureTarget = ColorCaptureComponents->TextureTarget;
-				// // Get the render target resource of the texture target
-				// FTextureRenderTargetResource* RenderTargetResource = TextureTarget->GetRenderTargetResource();
-				// // Read the pixels from the render target resource
-				// TArray<FColor> PixelData;
-				// RenderTargetResource->ReadPixels(PixelData);
-				// check each fcolor to see if any of the A values are 3
-				// for (auto& Pixel : ImageData)
-				// {
-				// 	// log pixel A value
-				// 	// UE_LOG(LogTemp, Warning, TEXT("Pixel A value: %d"), Pixel.A);
-				// 	if (Pixel.A != 255)
-				// 	{
-				// 		UE_LOG(LogTemp, Warning, TEXT("Pixel A value is not 255"));
-				// 	}
-				// }
-				
-				
-				TArray<AActor*> FoundActors;
-				TSet<FString> MyStrings = {"Tree", "Wall"};
-				for (auto& Str : MyStrings)
-				{
-					TArray<AActor*> TempFoundActors;
-					UGameplayStatics::GetAllActorsWithTag(GetWorld(), FName(*Str), TempFoundActors);
-					FoundActors.Append(TempFoundActors);
-				}
-
-				ParallelFor(FoundActors.Num(), [&](int32 i)
-				{
-					AStaticMeshActor* StaticMeshActor = Cast<AStaticMeshActor>(FoundActors[i]);
-					if (!StaticMeshActor)
-					{
-						return;
-					}
-					UStaticMeshComponent* StaticMeshComponent = StaticMeshActor->GetStaticMeshComponent();
-					if (!StaticMeshComponent)
-					{
-						return;
-					}
-					UStaticMesh* StaticMesh = StaticMeshComponent->GetStaticMesh();
-					if (!StaticMesh)
-					{
-						return;
-					}
-
-					FTransform ComponentToWorldTransform = StaticMeshComponent->GetComponentTransform();
-					TArray<FVector> Vertices = GetOutlineOfStaticMesh(StaticMesh, ComponentToWorldTransform);
-					// log num vetices
-					// UE_LOG(LogTemp, Warning, TEXT("Num vertices: %d"), Vertices.Num());
-					// use normal for loop instead
-					for(int vi = 0; vi < Vertices.Num(); vi++)
-					{
-						FVector InWorldLocation = Vertices[vi];
-						ProjectWorldPointToImageAndDraw(ImageData, InWorldLocation, 1);
-					}
-					// ParallelFor(BoundaryVertices.Num(), [&](int32 Idx) {
-					// 	FVector InWorldLocation = BoundaryVertices[Idx];
-					// 	ProjectWorldPointToImage(ImageData, InWorldLocation, 1);
-					// });
-				});
-
-				// Compress image data to PNG format
-				TArray64<uint8> DstData;
-				FImageUtils::PNGCompressImageArray(ScreenImageProperties.width, ScreenImageProperties.height, ImageData,
-				                                   DstData);
-
-				// Convert data to base64 string
-				DstData.Shrink(); // Shrink the source array to remove any extra slack
-				uint8* SrcPtr = DstData.GetData(); // Get a pointer to the raw data of the source array
-				int32 SrcCount = DstData.Num(); // Get the number of elements in the source array
-				TArray<uint8> NDstData(SrcPtr, SrcCount);
-				// Create the destination array using the pointer and the count
-				FString base64 = FBase64::Encode(NDstData);
-
-				// Create json object and emit to socket
-				auto JsonObject = USIOJConvert::MakeJsonObject();
-				JsonObject->SetStringField(TEXT("name"), InstanceName);
-				JsonObject->SetStringField(TEXT("image"), base64);
-				SIOClientComponent->EmitNative(TEXT("imageJson"), JsonObject);
-
-				// log emitting image for capture manager name
-				// UE_LOG(LogTemp, Warning, TEXT("Emitting image for capture manager name: %s"), *InstanceName);
-				auto val = InstanceName;
-				// create new inference task
-				FAsyncTask<AsyncInferenceTask>* MyTask =
-					new FAsyncTask<AsyncInferenceTask>(nextRenderRequest->Image, ScreenImageProperties,
-					                                   ModelImageProperties);
-				InferenceTaskQueue.Enqueue(MyTask);
-				// Delete the first element from RenderQueue
-				RenderRequestQueue.Pop();
-				delete nextRenderRequest;
-			}
+			ProcessImageData(nextRenderRequest);
 		}
 	}
 }
@@ -573,6 +540,5 @@ AsyncInferenceTask::AsyncInferenceTask(const TArray<FColor>& RawImage, const FSc
 
 void AsyncInferenceTask::DoWork()
 {
-	//log do work
 	// UE_LOG(LogTemp, Warning, TEXT("AsyncTaskDoWork inference"));
 }
