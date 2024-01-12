@@ -221,7 +221,8 @@ void UCaptureManager::ProjectWorldPointToImageAndDraw(TArray<FColor>& ImageData,
 	FVector CaptureForward = ColorCaptureComponents->GetForwardVector();
 	float NearClipPlane = ColorCaptureComponents->CustomNearClippingPlane;
 	FVector LensCenter = CaptureLocation + CaptureForward * NearClipPlane;
-	FVector InWorldLocationInLensCenterSpace = InWorldLocation - LensCenter; // Subtract the LensCenter from the InWorldLocation to get the InWorldLocation in the coordinate system of the LensCenter.
+	// Subtract the LensCenter from the InWorldLocation to get the InWorldLocation in the coordinate system of the LensCenter.
+	FVector InWorldLocationInLensCenterSpace = InWorldLocation - LensCenter;
 
 	// Draw OutPixel onto image as a red dot
 	int32 x = OutPixel.X;
@@ -320,6 +321,45 @@ void UCaptureManager::ProcessImageData(FRenderRequest* nextRenderRequest)
 	}
 }
 
+bool UCaptureManager::ProjectWorldLocationToCapturedScreen(USceneCaptureComponent2D* InCaptureComponent,
+                                                           const FVector& InWorldLocation,
+                                                           const FIntPoint& InRenderTarget2DSize,
+                                                           FVector2D& OutPixel)
+{
+	// Render Target's Rectangle
+	verify(InRenderTarget2DSize.GetMin() > 0);
+	const FIntRect renderTargetRect(0, 0, InRenderTarget2DSize.X, InRenderTarget2DSize.Y);
+
+	// Initialise Viewinfo for projection matrix from [InCaptureComponent]
+	FMinimalViewInfo minimalViewInfo;
+	InCaptureComponent->GetCameraView(0.f, minimalViewInfo);
+
+	// Fetch [captureComponent]'s [CustomProjectionMatrix]
+	TOptional<FMatrix> customProjectionMatrix;
+	if (InCaptureComponent->bUseCustomProjectionMatrix)
+	{
+		customProjectionMatrix = InCaptureComponent->CustomProjectionMatrix;
+	}
+
+	// Calculate [cameraViewProjectionMatrix]
+	FMatrix captureViewMatrix, captureProjectionMatrix, captureViewProjectionMatrix;
+	UGameplayStatics::CalculateViewProjectionMatricesFromMinimalView(minimalViewInfo, customProjectionMatrix,
+	                                                                 captureViewMatrix, captureProjectionMatrix,
+	                                                                 captureViewProjectionMatrix);
+
+	bool result = FSceneView::ProjectWorldToScreen(InWorldLocation, renderTargetRect,
+	                                               captureViewProjectionMatrix, OutPixel);
+
+	// UE_LOG(LogTemp, Warning,
+	//        TEXT(
+	// 	       "ON [%s] CAPTURED SCREEN: WORLD LOCATION [%s] HAS LOCAL PIXEL COORDINATES: (X) %lf [over %d] OR (Y) %lf [over %d]"
+	//        ),
+	//        *InCaptureComponent->GetName(), *InWorldLocation.ToString(),
+	//        OutPixel.X, InRenderTarget2DSize.X,
+	//        OutPixel.Y, InRenderTarget2DSize.Y);
+	return result;
+}
+
 /**
  * @brief If scene component is not running every frame, and this function is, then it will be reading the same data
  * from the texture over and over. TODO: check if this is true, and ensure no issues.
@@ -368,44 +408,7 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 }
 
 
-bool UCaptureManager::ProjectWorldLocationToCapturedScreen(USceneCaptureComponent2D* InCaptureComponent,
-                                                           const FVector& InWorldLocation,
-                                                           const FIntPoint& InRenderTarget2DSize,
-                                                           FVector2D& OutPixel)
-{
-	// Render Target's Rectangle
-	verify(InRenderTarget2DSize.GetMin() > 0);
-	const FIntRect renderTargetRect(0, 0, InRenderTarget2DSize.X, InRenderTarget2DSize.Y);
-
-	// Initialise Viewinfo for projection matrix from [InCaptureComponent]
-	FMinimalViewInfo minimalViewInfo;
-	InCaptureComponent->GetCameraView(0.f, minimalViewInfo);
-
-	// Fetch [captureComponent]'s [CustomProjectionMatrix]
-	TOptional<FMatrix> customProjectionMatrix;
-	if (InCaptureComponent->bUseCustomProjectionMatrix)
-	{
-		customProjectionMatrix = InCaptureComponent->CustomProjectionMatrix;
-	}
-
-	// Calculate [cameraViewProjectionMatrix]
-	FMatrix captureViewMatrix, captureProjectionMatrix, captureViewProjectionMatrix;
-	UGameplayStatics::CalculateViewProjectionMatricesFromMinimalView(minimalViewInfo, customProjectionMatrix,
-	                                                                 captureViewMatrix, captureProjectionMatrix,
-	                                                                 captureViewProjectionMatrix);
-
-	bool result = FSceneView::ProjectWorldToScreen(InWorldLocation, renderTargetRect,
-	                                               captureViewProjectionMatrix, OutPixel);
-
-	// UE_LOG(LogTemp, Warning,
-	//        TEXT(
-	// 	       "ON [%s] CAPTURED SCREEN: WORLD LOCATION [%s] HAS LOCAL PIXEL COORDINATES: (X) %lf [over %d] OR (Y) %lf [over %d]"
-	//        ),
-	//        *InCaptureComponent->GetName(), *InWorldLocation.ToString(),
-	//        OutPixel.X, InRenderTarget2DSize.X,
-	//        OutPixel.Y, InRenderTarget2DSize.Y);
-	return result;
-}
+// --------------------------------- ASyncInferenceTask ---------------------------------
 
 AsyncInferenceTask::AsyncInferenceTask(const TArray<FColor>& RawImage, const FScreenImageProperties ScreenImage,
                                        const FModelImageProperties ModelImage)
