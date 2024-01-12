@@ -109,17 +109,12 @@ Super(ObjectInitializer.SetDefaultSubobjectClass<UMowerVehicleMovementComponent>
 
 	MySceneCapture4 = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("MySceneCapture4"));
 	MySceneCapture4->SetupAttachment(GetMesh());
-
-	// MyCaptureManager2 = CreateDefaultSubobject<UCaptureManager>(TEXT("MyCaptureManager2"));
-	
-	// MyCaptureManager2->ColorCaptureComponents = MySceneCapture4;
 	
 	SIOClientComponent = CreateDefaultSubobject<USocketIOClientComponent>(TEXT("SocketIOClientComponent"));
 	SIOClientComponent->URLParams.AddressAndPort = TEXT("http://127.0.0.1:8000");
 	SIOClientComponent->URLParams.Path = TEXT("");
 
 	MyCaptureManager->SIOClientComponent = SIOClientComponent;
-	// MyCaptureManager2->SIOClientComponent = SIOClientComponent;
 }
 
 void AMower3OffroadCar::Tick(float DeltaSeconds)
@@ -128,13 +123,6 @@ void AMower3OffroadCar::Tick(float DeltaSeconds)
 
 	// ChaosVehicleMovement->SetLeftThrottleInput(-1.f);
 	// ChaosVehicleMovement->SetRightThrottleInput(1.f);
-
-	// {
-	// 	FVector CaptureLocation = MySceneCapture1->GetComponentLocation();
-	// 	FRotator CaptureRotation = MySceneCapture1->GetComponentRotation();
-	// 	float CaptureFOV = MySceneCapture1->FOVAngle;
-	// 	DrawDebugCamera(GetWorld(), CaptureLocation, CaptureRotation, CaptureFOV, 1.0f, FColor::Blue, false, 0.0f);
-	// }
 
 	ReplaceOrRemoveGrass(false);
 	// ReplaceOrRemoveGrass(true);
@@ -182,13 +170,10 @@ void AMower3OffroadCar::OnBeginOverlap(UPrimitiveComponent* OverlappedComp, AAct
 	
 }
 
-void AMower3OffroadCar::BeginPlay()
+void AMower3OffroadCar::ReceiveProcessedImageEvent()
 {
-	Super::BeginPlay();
-	MyBoxComponent->OnComponentBeginOverlap.AddDynamic(this, &AMower3OffroadCar::OnBeginOverlap);\
-	
 	SIOClientComponent->OnNativeEvent(TEXT("processedImage"), [this](const FString& Event,
-																  const TSharedPtr<FJsonValue>& Message)
+	                                                                 const TSharedPtr<FJsonValue>& Message)
 	{
 		// UE_LOG(LogTemp, Warning, TEXT("Received: %s"), *USIOJConvert::ToJsonString(Message));
 		TSharedPtr<FJsonObject> JsonObject = Message->AsObject();
@@ -209,7 +194,10 @@ void AMower3OffroadCar::BeginPlay()
 		// ChaosVehicleMovement->SetLeftThrottleInput(LeftThrottleValue);
 		// ChaosVehicleMovement->SetRightThrottleInput(RightThrottleValue);
 	});
+}
 
+void AMower3OffroadCar::SetupCaptureManagers()
+{
 	// Get the location and rotation of the existing scene capture component
 	FVector ExistingLocation = MySceneCapture1->GetComponentLocation();
 	FRotator ExistingRotation = MySceneCapture1->GetComponentRotation();
@@ -238,6 +226,16 @@ void AMower3OffroadCar::BeginPlay()
 	}
 	// log the number of capture managers
 	// UE_LOG(LogTemp, Warning, TEXT("Number of Capture Managers: %d"), CaptureManagers.Num());
+}
+
+void AMower3OffroadCar::BeginPlay()
+{
+	Super::BeginPlay();
+	MyBoxComponent->OnComponentBeginOverlap.AddDynamic(this, &AMower3OffroadCar::OnBeginOverlap);\
+	
+	ReceiveProcessedImageEvent();
+
+	SetupCaptureManagers();
 }
 
 void AMower3OffroadCar::ReplaceOrRemoveGrass(const bool bDebug, const FString& grassNameToReplace)

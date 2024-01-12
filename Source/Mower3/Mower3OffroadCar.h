@@ -90,6 +90,8 @@ public:
 	UFUNCTION()
 	void OnBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
 	                    int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
-	
+	void ReceiveProcessedImageEvent();
+	void SetupCaptureManagers();
+
 	void ReplaceOrRemoveGrass( const bool bDebug = false, const FString& grassNameToReplace = "");
 };
