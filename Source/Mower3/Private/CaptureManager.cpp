@@ -35,6 +35,7 @@ void UCaptureManager::BeginPlay()
 	// log defaultsubobject name
 	// UE_LOG(LogTemp, Warning, TEXT("ColorCaptureComponents name: %s"), *ColorCaptureComponents->GetName());
 	SetupColorCaptureComponent(ColorCaptureComponents);
+	SetupSegmentationCaptureComponent(ColorCaptureComponents);
 }
 
 /**
@@ -42,10 +43,9 @@ void UCaptureManager::BeginPlay()
  */
 void UCaptureManager::SetupColorCaptureComponent(USceneCaptureComponent2D* CaptureComponent)
 {
-	UObject* worldContextObject = GetWorld();
-
+	// UObject* worldContextObject = GetWorld();
 	// scene capture component render target (stores frame that is then pulled from gpu to cpu for neural network input)
-	RenderTarget2D = NewObject<UTextureRenderTarget2D>();
+	UTextureRenderTarget2D* RenderTarget2D = NewObject<UTextureRenderTarget2D>();
 	RenderTarget2D->InitAutoFormat(256, 256); // some random format, got crashing otherwise
 	RenderTarget2D->InitCustomFormat(ModelImageProperties.width, ModelImageProperties.height, PF_B8G8R8A8, true);
 	// PF_B8G8R8A8 disables HDR which will boost storing to disk due to less image information
@@ -59,6 +59,54 @@ void UCaptureManager::SetupColorCaptureComponent(USceneCaptureComponent2D* Captu
 	CaptureComponent->CaptureSource = SCS_FinalColorLDR;
 	// CaptureComponent->CompositeMode = SCCM_CustomDepth;
 	// CaptureComponent->ShowFlags.SetTemporalAA(true);
+}
+
+void UCaptureManager::SetupSegmentationCaptureComponent(USceneCaptureComponent2D* ColorCapture)
+{
+	// Spawn SegmentaitonCaptureComponents
+	// SpawnSegmentationCaptureComponent(ColorCapture);
+
+	// Setup SegmentationCaptureComponent
+	// SetupColorCaptureComponent(SegmentationCapture);
+	// SegmentationCapture->FOVAngle = ColorCapture->FOVAngle;
+	// auto seg1 = DuplicateObject(ColorCapture, this);
+	// SetupColorCaptureComponent(seg1);
+	// SegmentationCapture = seg1;
+
+	SetupColorCaptureComponent(SegmentationCapture);
+	
+	// log fov angle
+	UE_LOG(LogTemp, Warning, TEXT("ColorCaptureComponents FOVAngle: %f"), ColorCaptureComponents->FOVAngle);
+	UE_LOG(LogTemp, Warning, TEXT("SegmentationCapture FOVAngle: %f"), SegmentationCapture->FOVAngle);
+	
+	// log position of capture components
+	// UE_LOG(LogTemp, Warning, TEXT("ColorCaptureComponents position: %s"),
+	//        *ColorCaptureComponents->GetComponentLocation().ToString());
+	// UE_LOG(LogTemp, Warning, TEXT("SegmentationCapture position: %s"),
+	// 	*SegmentationCapture->GetComponentLocation().ToString());
+	
+	// SegmentationCapture->SetWorldTransform(ColorCapture->GetComponentTransform());
+	UE_LOG(LogTemp, Warning, TEXT("ColorCaptureComponents position: %s"),
+		   *ColorCaptureComponents->GetComponentLocation().ToString());
+	UE_LOG(LogTemp, Warning, TEXT("SegmentationCapture position: %s"),
+		*SegmentationCapture->GetComponentLocation().ToString());
+	
+	// Assign PostProcess Material
+	if (PostProcessMaterial)
+	{
+		// check nullptr
+		SegmentationCapture->AddOrUpdateBlendable(PostProcessMaterial);
+		// SegmentationCapture->AddOrUpdateBlendable(PostProcessMaterial, .5);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("PostProcessMaterial was nullptr!"));
+	}
+}
+
+void UCaptureManager::SpawnSegmentationCaptureComponent(USceneCaptureComponent2D* ColorCapture)
+{
+	// SegmentationCapture->FOVAngle = ColorCapture->FOVAngle;
 }
 
 /**
@@ -165,9 +213,10 @@ FColor AddTransparentRed(FColor InColor)
 	return OutColor;
 }
 
-FVector2D UCaptureManager::ProjectWorldPointToImage(FVector InWorldLocation)
+FVector2D UCaptureManager::ProjectWorldPointToImage(FVector InWorldLocation,
+                                                    USceneCaptureComponent2D* InCaptureComponent)
 {
-	USceneCaptureComponent2D* InCaptureComponent = ColorCaptureComponents;
+	// USceneCaptureComponent2D* InCaptureComponent = ColorCaptureComponents;
 	FIntPoint InRenderTarget2DSize = FIntPoint(ScreenImageProperties.width, ScreenImageProperties.height);
 	FVector2D OutPixel;
 	ProjectWorldLocationToCapturedScreen(InCaptureComponent, InWorldLocation, InRenderTarget2DSize, OutPixel);
@@ -175,10 +224,10 @@ FVector2D UCaptureManager::ProjectWorldPointToImage(FVector InWorldLocation)
 }
 
 void UCaptureManager::ProjectWorldPointToImageAndDraw(TArray<FColor>& ImageData, FVector InWorldLocation,
-                                                      int32 radius = 5)
+                                                      USceneCaptureComponent2D* InCaptureComponent, int32 radius = 5)
 {
 	FVector2D OutPixel;
-	ProjectWorldPointToImage(InWorldLocation);
+	ProjectWorldPointToImage(InWorldLocation, InCaptureComponent);
 
 	FVector CaptureLocation = ColorCaptureComponents->GetComponentLocation();
 	FVector CaptureForward = ColorCaptureComponents->GetForwardVector();
@@ -227,7 +276,7 @@ void UCaptureManager::SendImageToServer(TArray<FColor>& ImageData) const
 	SIOClientComponent->EmitNative(TEXT("imageJson"), JsonObject);
 }
 
-void UCaptureManager::ProcessImageData(TArray<FColor>& ImageData)
+void UCaptureManager::DoImageSegmentation(TArray<FColor>& ImageData, USceneCaptureComponent2D* InCaptureComponent)
 {
 	// Get actors
 	TArray<AActor*> FoundActors;
@@ -238,8 +287,7 @@ void UCaptureManager::ProcessImageData(TArray<FColor>& ImageData)
 		UGameplayStatics::GetAllActorsWithTag(GetWorld(), FName(*Str), TempFoundActors);
 		FoundActors.Append(TempFoundActors);
 	}
-
-	// Segmentation
+	
 	ParallelFor(FoundActors.Num(), [&](int32 i) -> void
 	{
 		const AStaticMeshActor* StaticMeshActor = Cast<AStaticMeshActor>(FoundActors[i]);
@@ -264,10 +312,30 @@ void UCaptureManager::ProcessImageData(TArray<FColor>& ImageData)
 		for (int vi = 0; vi < Vertices.Num(); vi++)
 		{
 			const FVector InWorldLocation = Vertices[vi];
-			ProjectWorldPointToImageAndDraw(ImageData, InWorldLocation, 1);
+			ProjectWorldPointToImageAndDraw(ImageData, InWorldLocation, InCaptureComponent, 1);
 		}
 	});
+}
 
+void UCaptureManager::ProcessImageData(TArray<FColor>& ImageData, USceneCaptureComponent2D* InCaptureComponent)
+{
+	// Segmentation
+	// DoImageSegmentation(ImageData, InCaptureComponent);
+	// log size of image data
+	UE_LOG(LogTemp, Warning, TEXT("ImageData size: %d"), ImageData.Num());
+	// log some of the pixels
+	UE_LOG(LogTemp, Warning, TEXT("ImageData[0]: %s"), *ImageData[0].ToString());
+	UE_LOG(LogTemp, Warning, TEXT("ImageData[1]: %s"), *ImageData[1].ToString());
+	// check if any of rgba are not 0 for any pixel
+	// for (int i = 0; i < ImageData.Num(); i++)
+	// {
+	// 	if (ImageData[i].R != 0 || ImageData[i].G != 0 || ImageData[i].B != 0 || ImageData[i].A != 0)
+	// 	{
+	// 		UE_LOG(LogTemp, Warning, TEXT("ImageData[%d]: %s"), i, *ImageData[i].ToString());
+	// 		// set A to 255
+	// 		ImageData[i].A = 255;
+	// 	}
+	// }
 	SendImageToServer(ImageData);
 }
 
@@ -337,11 +405,25 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 		}
 	}
 
+	USceneCaptureComponent2D* CapComp;
+	// TODO: Instead, create another capture component and use that for segmentation. Want both at same time, dont want to use the same queue.
+	bool isSegmentation = true;
+	if (isSegmentation)
+	{
+		CapComp = SegmentationCapture;
+	}
+	else
+	{
+		CapComp = ColorCaptureComponents;
+	}
+	
+	// capture every frameMod frame
 	if (frameCount++ % frameMod == 0)
 	{
-		// capture every frameMod frame
 		// Capture Color Image (adds render request to queue)
-		CaptureColorNonBlocking(ColorCaptureComponents, true);
+
+		CaptureColorNonBlocking(CapComp, true);
+		// CaptureColorNonBlocking(ColorCaptureComponents, true);
 		frameCount = 1;
 	}
 	// If there is a render task in the queue, read pixels once RenderFence is completed
@@ -355,7 +437,7 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 			// Check if rendering is done, indicated by RenderFence
 			if (nextRenderRequest->RenderFence.IsFenceComplete())
 			{
-				ProcessImageData(nextRenderRequest->Image);
+				ProcessImageData(nextRenderRequest->Image, CapComp);
 
 				// log emitting image for capture manager name
 				// UE_LOG(LogTemp, Warning, TEXT("Emitting image for capture manager name: %s"), *InstanceName);

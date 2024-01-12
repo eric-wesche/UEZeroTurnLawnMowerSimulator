@@ -99,13 +99,14 @@ Super(ObjectInitializer.SetDefaultSubobjectClass<UMowerVehicleMovementComponent>
 	// NOTE: Check the Blueprint asset for the Steering Curve
 	GetChaosVehicleMovement()->SteeringSetup.SteeringType = ESteeringType::AngleRatio;
 	GetChaosVehicleMovement()->SteeringSetup.AngleRatio = 0.7f;
-
+	
+	MyCaptureManager = CreateDefaultSubobject<UCaptureManager>(TEXT("MyCaptureManager"));
 	MySceneCapture1 = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("MySceneCapture1"));
 	MySceneCapture1->SetupAttachment(GetMesh());
-
-	MyCaptureManager = CreateDefaultSubobject<UCaptureManager>(TEXT("MyCaptureManager"));
-	
+	SegmentationCapture = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("SegmentationCapture"));
+	SegmentationCapture->SetupAttachment(GetMesh());
 	MyCaptureManager->ColorCaptureComponents = MySceneCapture1;
+	MyCaptureManager->SegmentationCapture = SegmentationCapture;
 
 	MySceneCapture4 = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("MySceneCapture4"));
 	MySceneCapture4->SetupAttachment(GetMesh());

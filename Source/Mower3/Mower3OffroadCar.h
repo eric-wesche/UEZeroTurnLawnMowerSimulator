@@ -57,6 +57,8 @@ class MOWER3_API AMower3OffroadCar : public AMower3Pawn
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Capture, meta = (AllowPrivateAccess = "true"))
 	USceneCaptureComponent2D* MySceneCapture1;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Capture, meta = (AllowPrivateAccess = "true"))
+	USceneCaptureComponent2D* SegmentationCapture;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Capture, meta = (AllowPrivateAccess = "true"))
 	USceneCaptureComponent2D* MySceneCapture4;
 
 	UPROPERTY()

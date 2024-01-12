@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 
 #include "Components/ActorComponent.h"
+#include "Engine/SceneCapture2D.h"
 
 #include "CaptureManager.generated.h"
 
@@ -50,12 +51,17 @@ public:
 	// Sets default values for this component's properties
 	UCaptureManager();
 
-	// Color Capture  Components
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture")
 	USceneCaptureComponent2D* ColorCaptureComponents;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture")
-	UTextureRenderTarget2D* RenderTarget2D;
+	USceneCaptureComponent2D* SegmentationCapture;
+	
+	// UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture")
+	// UTextureRenderTarget2D* RenderTarget2D;
+
+	UPROPERTY(EditAnywhere, Category="Segmentation Setup")
+	UMaterial* PostProcessMaterial = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = SocketIO, meta = (AllowPrivateAccess = "true"))
 	class USocketIOClientComponent* SIOClientComponent;
@@ -84,24 +90,28 @@ protected:
 	virtual void BeginPlay() override;
 
 public:
-	void ProcessImageData(TArray<FColor>& ImageData);
+	void ProcessImageData(TArray<FColor>& ImageData, USceneCaptureComponent2D* InCaptureComponent);
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 	bool ProjectWorldLocationToCapturedScreen(USceneCaptureComponent2D* InCaptureComponent,
 	                                          const FVector& InWorldLocation,
 	                                          const FIntPoint& InRenderTarget2DSize, FVector2D& OutPixel);
-	void ProjectWorldPointToImageAndDraw(TArray<FColor>& ImageData, FVector InWorldLocation, int32 radius);
-	FVector2D ProjectWorldPointToImage(FVector InWorldLocation);
+	void ProjectWorldPointToImageAndDraw(TArray<FColor>& ImageData, FVector InWorldLocation, USceneCaptureComponent2D* InCaptureComponent, int32 radius);
+	FVector2D ProjectWorldPointToImage(FVector InWorldLocation, USceneCaptureComponent2D* InCaptureComponent);
 	TArray<FVector> GetOutlineOfStaticMesh(UStaticMesh* StaticMesh, FTransform& ComponentToWorldTransform);
 	
 	UFUNCTION(BlueprintCallable, Category = "ImageCapture")
 	void CaptureColorNonBlocking(USceneCaptureComponent2D* CaptureComponent, bool IsSegmentation = false);
 
 	void SendImageToServer(TArray<FColor>& ImageData) const;
+	
+	void DoImageSegmentation(TArray<FColor>& ImageData, USceneCaptureComponent2D* InCaptureComponent);
 
 private:
 	void SetupColorCaptureComponent(USceneCaptureComponent2D* CaptureComponent);
+	void SetupSegmentationCaptureComponent(USceneCaptureComponent2D* ColorCapture);
+	void SpawnSegmentationCaptureComponent(USceneCaptureComponent2D* ColorCapture);
 };
 
 class AsyncInferenceTask : public FNonAbandonableTask {
