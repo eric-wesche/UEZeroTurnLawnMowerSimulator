@@ -145,43 +145,6 @@ TArray<FVector> UCaptureManager::GetOutlineOfStaticMesh(UStaticMesh* StaticMesh,
 		Vertices[i] = ComponentToWorldTransform.TransformPosition(Vertices[i]);
 	}
 	return Vertices;
-
-	// store triangles as groups of 3 vertices
-	TArray<TArray<int32>> TrianglesVertices;
-
-	// Iterate over the triangles and increment the vertex counts
-	for (int32 i = 0; i < Triangles.Num(); i += 3)
-	{
-		// Get the three vertex indices of the current triangle
-		int32 IndexA = Triangles[i];
-		int32 IndexB = Triangles[i + 1];
-		int32 IndexC = Triangles[i + 2];
-
-		TrianglesVertices.Add({IndexA, IndexB, IndexC});
-	}
-
-	TArray<TArray<FVector>> VerticesAsTriangles;
-	// Array of triangles, each triangle is an array of 3 vertices (3d vector)
-	for (auto Triangle : TrianglesVertices)
-	{
-		TArray<FVector> VertexCoordinatesOfTriangle;
-		for (auto VertexIndex : Triangle)
-		{
-			FVector Vertex = Vertices[VertexIndex];
-			VertexCoordinatesOfTriangle.Add(Vertex);
-		}
-	}
-
-	TArray<FVector> NewVertices;
-	for (auto Triangle : VerticesAsTriangles)
-	{
-		for (auto Vertex : Triangle)
-		{
-			NewVertices.Add(Vertex);
-		}
-	}
-
-	return NewVertices;
 }
 
 FColor AddTransparentRed(FColor InColor)
