@@ -206,8 +206,12 @@ void UCaptureManager::ProjectWorldPointToImageAndDraw(TArray<FColor>& ImageData,
 	}
 }
 
-void UCaptureManager::SendImageToServer(TArray64<uint8> DstData) const
+void UCaptureManager::SendImageToServer(TArray<FColor>& ImageData) const
 {
+	// Compress image data to PNG format
+	TArray64<uint8> DstData;
+	FImageUtils::PNGCompressImageArray(ScreenImageProperties.width, ScreenImageProperties.height, ImageData,
+									   DstData);
 	// Convert data to base64 string
 	DstData.Shrink(); // Shrink the source array to remove any extra slack
 	uint8* SrcPtr = DstData.GetData(); // Get a pointer to the raw data of the source array
@@ -223,14 +227,8 @@ void UCaptureManager::SendImageToServer(TArray64<uint8> DstData) const
 	SIOClientComponent->EmitNative(TEXT("imageJson"), JsonObject);
 }
 
-void UCaptureManager::ProcessImageData(FRenderRequest* nextRenderRequest)
+void UCaptureManager::ProcessImageData(TArray<FColor>& ImageData)
 {
-	// Check if rendering is done, indicated by RenderFence
-	if (nextRenderRequest->RenderFence.IsFenceComplete())
-	{
-		// Get image for this frame
-		TArray<FColor> ImageData = nextRenderRequest->Image;
-
 		// Get actors
 		TArray<AActor*> FoundActors;
 		TSet<FString> MyStrings = {"Tree", "Wall"};
@@ -269,26 +267,8 @@ void UCaptureManager::ProcessImageData(FRenderRequest* nextRenderRequest)
 				ProjectWorldPointToImageAndDraw(ImageData, InWorldLocation, 1);
 			}
 		});
-
-		// Compress image data to PNG format
-		TArray64<uint8> DstData;
-		FImageUtils::PNGCompressImageArray(ScreenImageProperties.width, ScreenImageProperties.height, ImageData,
-		                                   DstData);
-
-		SendImageToServer(DstData);
-
-		// log emitting image for capture manager name
-		// UE_LOG(LogTemp, Warning, TEXT("Emitting image for capture manager name: %s"), *InstanceName);
-		auto val = InstanceName;
-		// create new inference task
-		FAsyncTask<AsyncInferenceTask>* MyTask =
-			new FAsyncTask<AsyncInferenceTask>(nextRenderRequest->Image, ScreenImageProperties,
-			                                   ModelImageProperties);
-		InferenceTaskQueue.Enqueue(MyTask);
-		// Delete the first element from RenderQueue
-		RenderRequestQueue.Pop();
-		delete nextRenderRequest;
-	}
+		
+		SendImageToServer(ImageData);
 }
 
 bool UCaptureManager::ProjectWorldLocationToCapturedScreen(USceneCaptureComponent2D* InCaptureComponent,
@@ -372,7 +352,22 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 		RenderRequestQueue.Peek(nextRenderRequest);
 		if (nextRenderRequest)
 		{
-			ProcessImageData(nextRenderRequest);
+			// Check if rendering is done, indicated by RenderFence
+			if (nextRenderRequest->RenderFence.IsFenceComplete())
+			{
+				ProcessImageData(nextRenderRequest->Image);
+
+				// log emitting image for capture manager name
+				// UE_LOG(LogTemp, Warning, TEXT("Emitting image for capture manager name: %s"), *InstanceName);
+				// create new inference task
+				FAsyncTask<AsyncInferenceTask>* MyTask =
+					new FAsyncTask<AsyncInferenceTask>(nextRenderRequest->Image, ScreenImageProperties,
+													   ModelImageProperties);
+				InferenceTaskQueue.Enqueue(MyTask);
+				// Delete the first element from RenderQueue
+				RenderRequestQueue.Pop();
+				delete nextRenderRequest;
+			}
 		}
 	}
 }

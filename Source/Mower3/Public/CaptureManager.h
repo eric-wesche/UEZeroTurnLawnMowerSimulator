@@ -84,7 +84,7 @@ protected:
 	virtual void BeginPlay() override;
 
 public:
-	void ProcessImageData(FRenderRequest* nextRenderRequest);
+	void ProcessImageData(TArray<FColor>& ImageData);
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
@@ -98,7 +98,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ImageCapture")
 	void CaptureColorNonBlocking(USceneCaptureComponent2D* CaptureComponent, bool IsSegmentation = false);
 
-	void SendImageToServer(TArray64<uint8> DstData) const;
+	void SendImageToServer(TArray<FColor>& ImageData) const;
 
 private:
 	void SetupColorCaptureComponent(USceneCaptureComponent2D* CaptureComponent);
