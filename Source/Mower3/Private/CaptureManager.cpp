@@ -204,68 +204,6 @@ TArray<FVector> UCaptureManager::GetOutlineOfStaticMesh(UStaticMesh* StaticMesh,
 	return NewVertices;
 }
 
-TArray<TArray<FVector>> UCaptureManager::GetOutlineOfStaticMeshTriangles(
-	UStaticMesh* StaticMesh, FTransform& ComponentToWorldTransform)
-{
-	// Declare the map or set to store the vertex indices and counts
-	TMap<int32, int32> VertexCounts;
-
-	// Declare the arrays for the geometry data
-	TArray<FVector> Vertices;
-	TArray<int32> Triangles;
-	TArray<FVector> Normals;
-	TArray<FVector2D> UVs;
-	TArray<FProcMeshTangent> Tangents;
-
-	// Get the section from the static mesh asset
-	UKismetProceduralMeshLibrary::GetSectionFromStaticMesh(StaticMesh, 0, 0, Vertices, Triangles, Normals, UVs,
-	                                                       Tangents);
-
-	// Convert the vertex positions to world space
-	for (int32 i = 0; i < Vertices.Num(); i++)
-	{
-		Vertices[i] = ComponentToWorldTransform.TransformPosition(Vertices[i]);
-	}
-
-	// store triangles as groups of 3 vertices
-	TArray<TArray<int32>> TrianglesVertices;
-
-	// Iterate over the triangles and increment the vertex counts
-	for (int32 i = 0; i < Triangles.Num(); i += 3)
-	{
-		// Get the three vertex indices of the current triangle
-		int32 IndexA = Triangles[i];
-		int32 IndexB = Triangles[i + 1];
-		int32 IndexC = Triangles[i + 2];
-
-		TrianglesVertices.Add({IndexA, IndexB, IndexC});
-	}
-
-	TArray<TArray<FVector>> VerticesAsTriangles;
-	// Array of triangles, each triangle is an array of 3 vertices (3d vector)
-	for (auto Triangle : TrianglesVertices)
-	{
-		TArray<FVector> VertexCoordinatesOfTriangle;
-		for (auto VertexIndex : Triangle)
-		{
-			FVector Vertex = Vertices[VertexIndex];
-			VertexCoordinatesOfTriangle.Add(Vertex);
-		}
-		VerticesAsTriangles.Add(VertexCoordinatesOfTriangle);
-	}
-
-	TArray<FVector> NewVertices;
-	for (auto Triangle : VerticesAsTriangles)
-	{
-		for (auto Vertex : Triangle)
-		{
-			NewVertices.Add(Vertex);
-		}
-	}
-
-	return VerticesAsTriangles;
-}
-
 FColor AddTransparentRed(FColor InColor)
 {
 	// Create a constant vector for the red color
@@ -296,17 +234,14 @@ FVector2D UCaptureManager::ProjectWorldPointToImage(FVector InWorldLocation)
 void UCaptureManager::ProjectWorldPointToImageAndDraw(TArray<FColor>& ImageData, FVector InWorldLocation,
                                                       int32 radius = 5)
 {
-	USceneCaptureComponent2D* InCaptureComponent = ColorCaptureComponents;
-	FIntPoint InRenderTarget2DSize = FIntPoint(ScreenImageProperties.width, ScreenImageProperties.height);
 	FVector2D OutPixel;
-	ProjectWorldLocationToCapturedScreen(InCaptureComponent, InWorldLocation, InRenderTarget2DSize, OutPixel);
+	ProjectWorldPointToImage(InWorldLocation);
 
 	FVector CaptureLocation = ColorCaptureComponents->GetComponentLocation();
 	FVector CaptureForward = ColorCaptureComponents->GetForwardVector();
 	float NearClipPlane = ColorCaptureComponents->CustomNearClippingPlane;
 	FVector LensCenter = CaptureLocation + CaptureForward * NearClipPlane;
-	// Subtract the LensCenter from the InWorldLocation to get the InWorldLocation in the coordinate system of the LensCenter. 
-	FVector InWorldLocationInLensCenterSpace = InWorldLocation - LensCenter;
+	FVector InWorldLocationInLensCenterSpace = InWorldLocation - LensCenter; // Subtract the LensCenter from the InWorldLocation to get the InWorldLocation in the coordinate system of the LensCenter.
 
 	// Draw OutPixel onto image as a red dot
 	int32 x = OutPixel.X;
@@ -322,44 +257,6 @@ void UCaptureManager::ProjectWorldPointToImageAndDraw(TArray<FColor>& ImageData,
 			{
 				FColor color = ImageData[(y + j) * width + (x + _i)];
 				ImageData[(y + j) * width + (x + _i)] = AddTransparentRed(color);
-			}
-		}
-	}
-}
-
-void GetPixelsInTriangle(TArray<FVector2D> Triangle, TArray<FVector2D>& Pixels)
-{
-	// Get the vertex coordinates for the current triangle
-	FVector2D v1 = Triangle[0];
-	FVector2D v2 = Triangle[1];
-	FVector2D v3 = Triangle[2];
-
-	// Get the bounding box of the current triangle
-	int32 minX = FMath::Min3(v1.X, v2.X, v3.X);
-	int32 maxX = FMath::Max3(v1.X, v2.X, v3.X);
-	int32 minY = FMath::Min3(v1.Y, v2.Y, v3.Y);
-	int32 maxY = FMath::Max3(v1.Y, v2.Y, v3.Y);
-
-	// Loop through the pixels in the bounding box
-	for (int32 x = minX; x <= maxX; x++)
-	{
-		for (int32 y = minY; y <= maxY; y++)
-		{
-			// Get the pixel coordinate
-			FVector2D p(x, y);
-
-			// Calculate the barycentric coordinates of the pixel
-			float alpha = ((v2.Y - v3.Y) * (p.X - v3.X) + (v3.X - v2.X) * (p.Y - v3.Y)) / ((v2.Y - v3.Y) * (v1.X - v3.X)
-				+ (v3.X - v2.X) * (v1.Y - v3.Y));
-			float beta = ((v3.Y - v1.Y) * (p.X - v3.X) + (v1.X - v3.X) * (p.Y - v3.Y)) / ((v2.Y - v3.Y) * (v1.X - v3.X)
-				+ (v3.X - v2.X) * (v1.Y - v3.Y));
-			float gamma = 1.0f - alpha - beta;
-
-			// Check if the pixel is inside the triangle
-			if (alpha >= 0 && alpha <= 1 && beta >= 0 && beta <= 1 && gamma >= 0 && gamma <= 1)
-			{
-				// Add the pixel to the output array
-				Pixels.Add(p);
 			}
 		}
 	}
