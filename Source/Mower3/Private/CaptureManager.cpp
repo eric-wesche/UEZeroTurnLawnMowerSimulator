@@ -70,18 +70,15 @@ void UCaptureManager::SetupColorCaptureComponent(USceneCaptureComponent2D* Captu
 	RenderTarget2D->InitCustomFormat(ModelImageProperties.width, ModelImageProperties.height, PF_B8G8R8A8, true);
 	// PF_B8G8R8A8 disables HDR which will boost storing to disk due to less image information
 	RenderTarget2D->RenderTargetFormat = RTF_RGBA8;
+	// RenderTarget2D->RenderTargetFormat = RTF_RGBA8;
 	RenderTarget2D->bGPUSharedFlag = true; // demand buffer on GPU
 	RenderTarget2D->TargetGamma = 1.2f; // for Vulkan //GEngine->GetDisplayGamma(); // for DX11/12
 
-	// add render target to scene capture component
 	CaptureComponent->TextureTarget = RenderTarget2D;
-
-	// Set Camera Properties
+	// CaptureComponent->CaptureSource = SCS_SceneColorSceneDepth;
 	CaptureComponent->CaptureSource = SCS_FinalColorLDR;
-	// CaptureComponent->CaptureSource = ESceneCaptureSource::SCS_SceneColorHDR;
-	// CaptureComponent->CaptureSource = ESceneCaptureSource::SCS_Normal;
-
-	CaptureComponent->ShowFlags.SetTemporalAA(true);
+	// CaptureComponent->CompositeMode = SCCM_CustomDepth;
+	// CaptureComponent->ShowFlags.SetTemporalAA(true);
 }
 
 /**
@@ -169,6 +166,9 @@ TArray<FVector> UCaptureManager::GetOutlineOfStaticMesh(UStaticMesh* StaticMesh,
 	}
 	return Vertices;
 
+	// store triangles as groups of 3 vertices
+	TArray<TArray<int32>> TrianglesVertices;
+
 	// Iterate over the triangles and increment the vertex counts
 	for (int32 i = 0; i < Triangles.Num(); i += 3)
 	{
@@ -177,36 +177,93 @@ TArray<FVector> UCaptureManager::GetOutlineOfStaticMesh(UStaticMesh* StaticMesh,
 		int32 IndexB = Triangles[i + 1];
 		int32 IndexC = Triangles[i + 2];
 
-		// Increment the counts of each vertex index
-		VertexCounts.FindOrAdd(IndexA)++;
-		VertexCounts.FindOrAdd(IndexB)++;
-		VertexCounts.FindOrAdd(IndexC)++;
+		TrianglesVertices.Add({IndexA, IndexB, IndexC});
 	}
 
-	// Declare an array to store the boundary vertices
-	TArray<FVector> BoundaryVertices;
-
-	// Loop over the vertex counts and collect the boundary vertices
-	for (auto& Pair : VertexCounts)
+	TArray<TArray<FVector>> VerticesAsTriangles;
+	// Array of triangles, each triangle is an array of 3 vertices (3d vector)
+	for (auto Triangle : TrianglesVertices)
 	{
-		// Get the vertex index and count
-		int32 Index = Pair.Key;
-		int32 Count = Pair.Value;
-
-		// If the count is one, the vertex is on the boundary
-		if (Count == 1)
+		TArray<FVector> VertexCoordinatesOfTriangle;
+		for (auto VertexIndex : Triangle)
 		{
-			// Get the vertex position from the vertices array
-			FVector Vertex = Vertices[Index];
-
-			// Transform the vertex position by the component-to-world transform
-			Vertex = ComponentToWorldTransform.TransformPosition(Vertex);
-
-			// Add the vertex to the boundary vertices array
-			BoundaryVertices.Add(Vertex);
+			FVector Vertex = Vertices[VertexIndex];
+			VertexCoordinatesOfTriangle.Add(Vertex);
 		}
 	}
-	return BoundaryVertices;
+
+	TArray<FVector> NewVertices;
+	for (auto Triangle : VerticesAsTriangles)
+	{
+		for (auto Vertex : Triangle)
+		{
+			NewVertices.Add(Vertex);
+		}
+	}
+
+	return NewVertices;
+}
+
+TArray<TArray<FVector>> UCaptureManager::GetOutlineOfStaticMeshTriangles(
+	UStaticMesh* StaticMesh, FTransform& ComponentToWorldTransform)
+{
+	// Declare the map or set to store the vertex indices and counts
+	TMap<int32, int32> VertexCounts;
+
+	// Declare the arrays for the geometry data
+	TArray<FVector> Vertices;
+	TArray<int32> Triangles;
+	TArray<FVector> Normals;
+	TArray<FVector2D> UVs;
+	TArray<FProcMeshTangent> Tangents;
+
+	// Get the section from the static mesh asset
+	UKismetProceduralMeshLibrary::GetSectionFromStaticMesh(StaticMesh, 0, 0, Vertices, Triangles, Normals, UVs,
+	                                                       Tangents);
+
+	// Convert the vertex positions to world space
+	for (int32 i = 0; i < Vertices.Num(); i++)
+	{
+		Vertices[i] = ComponentToWorldTransform.TransformPosition(Vertices[i]);
+	}
+
+	// store triangles as groups of 3 vertices
+	TArray<TArray<int32>> TrianglesVertices;
+
+	// Iterate over the triangles and increment the vertex counts
+	for (int32 i = 0; i < Triangles.Num(); i += 3)
+	{
+		// Get the three vertex indices of the current triangle
+		int32 IndexA = Triangles[i];
+		int32 IndexB = Triangles[i + 1];
+		int32 IndexC = Triangles[i + 2];
+
+		TrianglesVertices.Add({IndexA, IndexB, IndexC});
+	}
+
+	TArray<TArray<FVector>> VerticesAsTriangles;
+	// Array of triangles, each triangle is an array of 3 vertices (3d vector)
+	for (auto Triangle : TrianglesVertices)
+	{
+		TArray<FVector> VertexCoordinatesOfTriangle;
+		for (auto VertexIndex : Triangle)
+		{
+			FVector Vertex = Vertices[VertexIndex];
+			VertexCoordinatesOfTriangle.Add(Vertex);
+		}
+		VerticesAsTriangles.Add(VertexCoordinatesOfTriangle);
+	}
+
+	TArray<FVector> NewVertices;
+	for (auto Triangle : VerticesAsTriangles)
+	{
+		for (auto Vertex : Triangle)
+		{
+			NewVertices.Add(Vertex);
+		}
+	}
+
+	return VerticesAsTriangles;
 }
 
 FColor AddTransparentRed(FColor InColor)
@@ -227,7 +284,17 @@ FColor AddTransparentRed(FColor InColor)
 	return OutColor;
 }
 
-void UCaptureManager::ProjectWorldPointToImage(TArray<FColor>& ImageData, FVector InWorldLocation, int32 radius = 5)
+FVector2D UCaptureManager::ProjectWorldPointToImage(FVector InWorldLocation)
+{
+	USceneCaptureComponent2D* InCaptureComponent = ColorCaptureComponents;
+	FIntPoint InRenderTarget2DSize = FIntPoint(ScreenImageProperties.width, ScreenImageProperties.height);
+	FVector2D OutPixel;
+	ProjectWorldLocationToCapturedScreen(InCaptureComponent, InWorldLocation, InRenderTarget2DSize, OutPixel);
+	return OutPixel;
+}
+
+void UCaptureManager::ProjectWorldPointToImageAndDraw(TArray<FColor>& ImageData, FVector InWorldLocation,
+                                                      int32 radius = 5)
 {
 	USceneCaptureComponent2D* InCaptureComponent = ColorCaptureComponents;
 	FIntPoint InRenderTarget2DSize = FIntPoint(ScreenImageProperties.width, ScreenImageProperties.height);
@@ -241,11 +308,16 @@ void UCaptureManager::ProjectWorldPointToImage(TArray<FColor>& ImageData, FVecto
 	// Subtract the LensCenter from the InWorldLocation to get the InWorldLocation in the coordinate system of the LensCenter. 
 	FVector InWorldLocationInLensCenterSpace = InWorldLocation - LensCenter;
 
+	// Say that you have outpixel but also 2 other pixels that make up a triangle. draw the triangle onto the image, meaning needs to fill in all the pixels in the triangle using its vertices.
+	// FVector2D Outpixel2 = OutPixel + FVector2D(0, 1);
+	// FVector2D Outpixel3 = OutPixel + FVector2D(1, 0);
+
 	// Draw OutPixel onto image as a red dot
 	int32 x = OutPixel.X;
 	int32 y = OutPixel.Y;
 	int32 width = ScreenImageProperties.width;
 	int32 height = ScreenImageProperties.height;
+	// UE_LOG(LogTemp, Warning, TEXT("color: %s"), *ImageData[0].ToString());
 	for (int32 _i = -radius; _i <= radius; _i++)
 	{
 		for (int32 j = -radius; j <= radius; j++)
@@ -253,8 +325,53 @@ void UCaptureManager::ProjectWorldPointToImage(TArray<FColor>& ImageData, FVecto
 			if (x + _i >= 0 && x + _i < width && y + j >= 0 && y + j < height) // TODO: If it's not in the bounds it's not being captured. Check this beforehand and exit.
 			{
 				FColor color = ImageData[(y + j) * width + (x + _i)];
+				// log color
+				// UE_LOG(LogTemp, Warning, TEXT("color: %s"), *color.ToString());
+				// log if A is not 128
+				// if (color.A != 128)
+				// {
+				// 	UE_LOG(LogTemp, Warning, TEXT("A is not 128: %d"), color.A);
+				// }
 				// ImageData[(y + j) * width + (x + _i)] = FColor(255, 0, 0, 55);
 				ImageData[(y + j) * width + (x + _i)] = AddTransparentRed(color);
+			}
+		}
+	}
+}
+
+void GetPixelsInTriangle(TArray<FVector2D> Triangle, TArray<FVector2D>& Pixels)
+{
+	// Get the vertex coordinates for the current triangle
+	FVector2D v1 = Triangle[0];
+	FVector2D v2 = Triangle[1];
+	FVector2D v3 = Triangle[2];
+
+	// Get the bounding box of the current triangle
+	int32 minX = FMath::Min3(v1.X, v2.X, v3.X);
+	int32 maxX = FMath::Max3(v1.X, v2.X, v3.X);
+	int32 minY = FMath::Min3(v1.Y, v2.Y, v3.Y);
+	int32 maxY = FMath::Max3(v1.Y, v2.Y, v3.Y);
+
+	// Loop through the pixels in the bounding box
+	for (int32 x = minX; x <= maxX; x++)
+	{
+		for (int32 y = minY; y <= maxY; y++)
+		{
+			// Get the pixel coordinate
+			FVector2D p(x, y);
+
+			// Calculate the barycentric coordinates of the pixel
+			float alpha = ((v2.Y - v3.Y) * (p.X - v3.X) + (v3.X - v2.X) * (p.Y - v3.Y)) / ((v2.Y - v3.Y) * (v1.X - v3.X)
+				+ (v3.X - v2.X) * (v1.Y - v3.Y));
+			float beta = ((v3.Y - v1.Y) * (p.X - v3.X) + (v1.X - v3.X) * (p.Y - v3.Y)) / ((v2.Y - v3.Y) * (v1.X - v3.X)
+				+ (v3.X - v2.X) * (v1.Y - v3.Y));
+			float gamma = 1.0f - alpha - beta;
+
+			// Check if the pixel is inside the triangle
+			if (alpha >= 0 && alpha <= 1 && beta >= 0 && beta <= 1 && gamma >= 0 && gamma <= 1)
+			{
+				// Add the pixel to the output array
+				Pixels.Add(p);
 			}
 		}
 	}
@@ -307,11 +424,29 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 			{
 				// Check if rendering is done, indicated by RenderFence
 
-				// Get image for this frame
+				// // Get image for this frame
 				TArray<FColor> ImageData = nextRenderRequest->Image;
-	
+				// // Get the texture target of the component
+				// UTextureRenderTarget2D* TextureTarget = ColorCaptureComponents->TextureTarget;
+				// // Get the render target resource of the texture target
+				// FTextureRenderTargetResource* RenderTargetResource = TextureTarget->GetRenderTargetResource();
+				// // Read the pixels from the render target resource
+				// TArray<FColor> PixelData;
+				// RenderTargetResource->ReadPixels(PixelData);
+				// check each fcolor to see if any of the A values are 3
+				// for (auto& Pixel : ImageData)
+				// {
+				// 	// log pixel A value
+				// 	// UE_LOG(LogTemp, Warning, TEXT("Pixel A value: %d"), Pixel.A);
+				// 	if (Pixel.A != 255)
+				// 	{
+				// 		UE_LOG(LogTemp, Warning, TEXT("Pixel A value is not 255"));
+				// 	}
+				// }
+				
+				
 				TArray<AActor*> FoundActors;
-				TSet<FString> MyStrings = {"Tree", "Cube"};
+				TSet<FString> MyStrings = {"Tree", "Wall"};
 				for (auto& Str : MyStrings)
 				{
 					TArray<AActor*> TempFoundActors;
@@ -322,23 +457,37 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 				ParallelFor(FoundActors.Num(), [&](int32 i)
 				{
 					AStaticMeshActor* StaticMeshActor = Cast<AStaticMeshActor>(FoundActors[i]);
-					if (!StaticMeshActor) return;
+					if (!StaticMeshActor)
+					{
+						return;
+					}
 					UStaticMeshComponent* StaticMeshComponent = StaticMeshActor->GetStaticMeshComponent();
-					if (!StaticMeshComponent) return;
+					if (!StaticMeshComponent)
+					{
+						return;
+					}
 					UStaticMesh* StaticMesh = StaticMeshComponent->GetStaticMesh();
-					if (!StaticMesh) return;
+					if (!StaticMesh)
+					{
+						return;
+					}
 
 					FTransform ComponentToWorldTransform = StaticMeshComponent->GetComponentTransform();
-					TArray<FVector> BoundaryVertices = GetOutlineOfStaticMesh(StaticMesh, ComponentToWorldTransform);
-
-					// UE_LOG(LogTemp, Warning, TEXT("BoundaryVertices size: %d"), BoundaryVertices.Num());
-
-					ParallelFor(BoundaryVertices.Num(), [&](int32 Idx) {
-						FVector InWorldLocation = BoundaryVertices[Idx];
-						ProjectWorldPointToImage(ImageData, InWorldLocation, 1);
-					});
+					TArray<FVector> Vertices = GetOutlineOfStaticMesh(StaticMesh, ComponentToWorldTransform);
+					// log num vetices
+					// UE_LOG(LogTemp, Warning, TEXT("Num vertices: %d"), Vertices.Num());
+					// use normal for loop instead
+					for(int vi = 0; vi < Vertices.Num(); vi++)
+					{
+						FVector InWorldLocation = Vertices[vi];
+						ProjectWorldPointToImageAndDraw(ImageData, InWorldLocation, 1);
+					}
+					// ParallelFor(BoundaryVertices.Num(), [&](int32 Idx) {
+					// 	FVector InWorldLocation = BoundaryVertices[Idx];
+					// 	ProjectWorldPointToImage(ImageData, InWorldLocation, 1);
+					// });
 				});
-				
+
 				// Compress image data to PNG format
 				TArray64<uint8> DstData;
 				FImageUtils::PNGCompressImageArray(ScreenImageProperties.width, ScreenImageProperties.height, ImageData,
