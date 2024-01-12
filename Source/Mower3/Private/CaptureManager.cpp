@@ -243,6 +243,23 @@ void UCaptureManager::ProjectWorldPointToImageAndDraw(TArray<FColor>& ImageData,
 	}
 }
 
+void UCaptureManager::SendImageToServer(TArray64<uint8> DstData) const
+{
+	// Convert data to base64 string
+	DstData.Shrink(); // Shrink the source array to remove any extra slack
+	uint8* SrcPtr = DstData.GetData(); // Get a pointer to the raw data of the source array
+	int32 SrcCount = DstData.Num(); // Get the number of elements in the source array
+	TArray<uint8> NDstData(SrcPtr, SrcCount);
+	// Create the destination array using the pointer and the count
+	FString base64 = FBase64::Encode(NDstData);
+
+	// Create json object and emit to socket
+	auto JsonObject = USIOJConvert::MakeJsonObject();
+	JsonObject->SetStringField(TEXT("name"), InstanceName);
+	JsonObject->SetStringField(TEXT("image"), base64);
+	SIOClientComponent->EmitNative(TEXT("imageJson"), JsonObject);
+}
+
 void UCaptureManager::ProcessImageData(FRenderRequest* nextRenderRequest)
 {
 	// Check if rendering is done, indicated by RenderFence
@@ -251,6 +268,7 @@ void UCaptureManager::ProcessImageData(FRenderRequest* nextRenderRequest)
 		// Get image for this frame
 		TArray<FColor> ImageData = nextRenderRequest->Image;
 
+		// Get actors
 		TArray<AActor*> FoundActors;
 		TSet<FString> MyStrings = {"Tree", "Wall"};
 		for (auto& Str : MyStrings)
@@ -260,6 +278,7 @@ void UCaptureManager::ProcessImageData(FRenderRequest* nextRenderRequest)
 			FoundActors.Append(TempFoundActors);
 		}
 
+		// Segmentation
 		ParallelFor(FoundActors.Num(), [&](int32 i)
 		{
 			AStaticMeshActor* StaticMeshActor = Cast<AStaticMeshActor>(FoundActors[i]);
@@ -293,19 +312,7 @@ void UCaptureManager::ProcessImageData(FRenderRequest* nextRenderRequest)
 		FImageUtils::PNGCompressImageArray(ScreenImageProperties.width, ScreenImageProperties.height, ImageData,
 		                                   DstData);
 
-		// Convert data to base64 string
-		DstData.Shrink(); // Shrink the source array to remove any extra slack
-		uint8* SrcPtr = DstData.GetData(); // Get a pointer to the raw data of the source array
-		int32 SrcCount = DstData.Num(); // Get the number of elements in the source array
-		TArray<uint8> NDstData(SrcPtr, SrcCount);
-		// Create the destination array using the pointer and the count
-		FString base64 = FBase64::Encode(NDstData);
-
-		// Create json object and emit to socket
-		auto JsonObject = USIOJConvert::MakeJsonObject();
-		JsonObject->SetStringField(TEXT("name"), InstanceName);
-		JsonObject->SetStringField(TEXT("image"), base64);
-		SIOClientComponent->EmitNative(TEXT("imageJson"), JsonObject);
+		SendImageToServer(DstData);
 
 		// log emitting image for capture manager name
 		// UE_LOG(LogTemp, Warning, TEXT("Emitting image for capture manager name: %s"), *InstanceName);

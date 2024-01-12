@@ -98,6 +98,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ImageCapture")
 	void CaptureColorNonBlocking(USceneCaptureComponent2D* CaptureComponent, bool IsSegmentation = false);
 
+	void SendImageToServer(TArray64<uint8> DstData) const;
+
 private:
 	void SetupColorCaptureComponent(USceneCaptureComponent2D* CaptureComponent);
 };
