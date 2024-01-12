@@ -211,7 +211,7 @@ void UCaptureManager::SendImageToServer(TArray<FColor>& ImageData) const
 	// Compress image data to PNG format
 	TArray64<uint8> DstData;
 	FImageUtils::PNGCompressImageArray(ScreenImageProperties.width, ScreenImageProperties.height, ImageData,
-									   DstData);
+	                                   DstData);
 	// Convert data to base64 string
 	DstData.Shrink(); // Shrink the source array to remove any extra slack
 	uint8* SrcPtr = DstData.GetData(); // Get a pointer to the raw data of the source array
@@ -229,46 +229,46 @@ void UCaptureManager::SendImageToServer(TArray<FColor>& ImageData) const
 
 void UCaptureManager::ProcessImageData(TArray<FColor>& ImageData)
 {
-		// Get actors
-		TArray<AActor*> FoundActors;
-		TSet<FString> MyStrings = {"Tree", "Wall"};
-		for (auto& Str : MyStrings)
+	// Get actors
+	TArray<AActor*> FoundActors;
+	TSet<FString> MyStrings = {"Tree", "Wall"};
+	for (auto& Str : MyStrings)
+	{
+		TArray<AActor*> TempFoundActors;
+		UGameplayStatics::GetAllActorsWithTag(GetWorld(), FName(*Str), TempFoundActors);
+		FoundActors.Append(TempFoundActors);
+	}
+
+	// Segmentation
+	ParallelFor(FoundActors.Num(), [&](int32 i) -> void
+	{
+		const AStaticMeshActor* StaticMeshActor = Cast<AStaticMeshActor>(FoundActors[i]);
+		if (!StaticMeshActor)
 		{
-			TArray<AActor*> TempFoundActors;
-			UGameplayStatics::GetAllActorsWithTag(GetWorld(), FName(*Str), TempFoundActors);
-			FoundActors.Append(TempFoundActors);
+			return;
+		}
+		const UStaticMeshComponent* StaticMeshComponent = StaticMeshActor->GetStaticMeshComponent();
+		if (!StaticMeshComponent)
+		{
+			return;
+		}
+		UStaticMesh* StaticMesh = StaticMeshComponent->GetStaticMesh();
+		if (!StaticMesh)
+		{
+			return;
 		}
 
-		// Segmentation
-		ParallelFor(FoundActors.Num(), [&](int32 i)
+		FTransform ComponentToWorldTransform = StaticMeshComponent->GetComponentTransform();
+		TArray<FVector> Vertices = GetOutlineOfStaticMesh(StaticMesh, ComponentToWorldTransform);
+
+		for (int vi = 0; vi < Vertices.Num(); vi++)
 		{
-			AStaticMeshActor* StaticMeshActor = Cast<AStaticMeshActor>(FoundActors[i]);
-			if (!StaticMeshActor)
-			{
-				return;
-			}
-			UStaticMeshComponent* StaticMeshComponent = StaticMeshActor->GetStaticMeshComponent();
-			if (!StaticMeshComponent)
-			{
-				return;
-			}
-			UStaticMesh* StaticMesh = StaticMeshComponent->GetStaticMesh();
-			if (!StaticMesh)
-			{
-				return;
-			}
+			const FVector InWorldLocation = Vertices[vi];
+			ProjectWorldPointToImageAndDraw(ImageData, InWorldLocation, 1);
+		}
+	});
 
-			FTransform ComponentToWorldTransform = StaticMeshComponent->GetComponentTransform();
-			TArray<FVector> Vertices = GetOutlineOfStaticMesh(StaticMesh, ComponentToWorldTransform);
-
-			for (int vi = 0; vi < Vertices.Num(); vi++)
-			{
-				FVector InWorldLocation = Vertices[vi];
-				ProjectWorldPointToImageAndDraw(ImageData, InWorldLocation, 1);
-			}
-		});
-		
-		SendImageToServer(ImageData);
+	SendImageToServer(ImageData);
 }
 
 bool UCaptureManager::ProjectWorldLocationToCapturedScreen(USceneCaptureComponent2D* InCaptureComponent,
@@ -362,7 +362,7 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 				// create new inference task
 				FAsyncTask<AsyncInferenceTask>* MyTask =
 					new FAsyncTask<AsyncInferenceTask>(nextRenderRequest->Image, ScreenImageProperties,
-													   ModelImageProperties);
+					                                   ModelImageProperties);
 				InferenceTaskQueue.Enqueue(MyTask);
 				// Delete the first element from RenderQueue
 				RenderRequestQueue.Pop();
