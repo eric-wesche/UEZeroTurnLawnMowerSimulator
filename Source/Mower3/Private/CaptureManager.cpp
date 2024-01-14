@@ -77,23 +77,23 @@ void UCaptureManager::SetupSegmentationCaptureComponent(USceneCaptureComponent2D
 	// SegmentationCapture = seg1;
 
 	SetupColorCaptureComponent(SegmentationCapture);
-	
+
 	// log fov angle
 	UE_LOG(LogTemp, Warning, TEXT("ColorCaptureComponents FOVAngle: %f"), ColorCaptureComponents->FOVAngle);
 	UE_LOG(LogTemp, Warning, TEXT("SegmentationCapture FOVAngle: %f"), SegmentationCapture->FOVAngle);
-	
+
 	// log position of capture components
 	// UE_LOG(LogTemp, Warning, TEXT("ColorCaptureComponents position: %s"),
 	//        *ColorCaptureComponents->GetComponentLocation().ToString());
 	// UE_LOG(LogTemp, Warning, TEXT("SegmentationCapture position: %s"),
 	// 	*SegmentationCapture->GetComponentLocation().ToString());
-	
+
 	// SegmentationCapture->SetWorldTransform(ColorCapture->GetComponentTransform());
 	UE_LOG(LogTemp, Warning, TEXT("ColorCaptureComponents position: %s"),
-		   *ColorCaptureComponents->GetComponentLocation().ToString());
+	       *ColorCaptureComponents->GetComponentLocation().ToString());
 	UE_LOG(LogTemp, Warning, TEXT("SegmentationCapture position: %s"),
-		*SegmentationCapture->GetComponentLocation().ToString());
-	
+	       *SegmentationCapture->GetComponentLocation().ToString());
+
 	// Assign PostProcess Material
 	if (PostProcessMaterial)
 	{
@@ -126,27 +126,31 @@ void UCaptureManager::SpawnSegmentationCaptureComponent(USceneCaptureComponent2D
  */
 void UCaptureManager::CaptureColorNonBlocking(USceneCaptureComponent2D* CaptureComponent, bool IsSegmentation)
 {
-	if (!IsValid(CaptureComponent))
+	if (!IsValid(SegmentationCapture) || !IsValid(ColorCaptureComponents))
 	{
 		UE_LOG(LogTemp, Error, TEXT("CaptureColorNonBlocking: CaptureComponent was not valid!"));
 		return;
 	}
 
-	FTextureRenderTargetResource* renderTargetResource = CaptureComponent->TextureTarget->
-	                                                                       GameThread_GetRenderTargetResource();
+	FTextureRenderTargetResource* renderTargetResource1 = SegmentationCapture->TextureTarget->
+	                                                                           GameThread_GetRenderTargetResource();
 
-	const int32& rtx = CaptureComponent->TextureTarget->SizeX;
-	const int32& rty = CaptureComponent->TextureTarget->SizeY;
-	
-	// Init new RenderRequest
+	const int32& rtx1 = SegmentationCapture->TextureTarget->SizeX;
+	const int32& rty1 = SegmentationCapture->TextureTarget->SizeY;
+
+	FTextureRenderTargetResource* renderTargetResource2 = ColorCaptureComponents->TextureTarget->
+		GameThread_GetRenderTargetResource();
+
+	const int32& rtx2 = ColorCaptureComponents->TextureTarget->SizeX;
+	const int32& rty2 = ColorCaptureComponents->TextureTarget->SizeY;
+
 	FRenderRequest* renderRequest = new FRenderRequest();
 	renderRequest->isPNG = IsSegmentation;
 
-	int32 width = rtx;
-	int32 height = rty;
+	int32 width = rtx1;
+	int32 height = rty1;
 	ScreenImageProperties = {width, height};
-	
-	// Setup GPU command
+
 	struct FReadSurfaceContext
 	{
 		FRenderTarget* SrcRenderTarget;
@@ -154,31 +158,37 @@ void UCaptureManager::CaptureColorNonBlocking(USceneCaptureComponent2D* CaptureC
 		FIntRect Rect;
 		FReadSurfaceDataFlags Flags;
 	};
-	FReadSurfaceContext readSurfaceContext = {
-		renderTargetResource,
-		&(renderRequest->Image), // store frame in render request
+	FReadSurfaceContext readSurfaceContext1 = {
+		renderTargetResource1,
+		&(renderRequest->Image1),
 		FIntRect(0, 0, width, height),
 		FReadSurfaceDataFlags(RCM_UNorm, CubeFace_MAX)
 	};
-	renderRequest->RenderFence.BeginFence(false);
+	FReadSurfaceContext readSurfaceContext2 = {
+		renderTargetResource2,
+		&(renderRequest->Image2),
+		FIntRect(0, 0, width, height),
+		FReadSurfaceDataFlags(RCM_UNorm, CubeFace_MAX)
+	};
 	ENQUEUE_RENDER_COMMAND(SceneDrawCompletion)(
-		[readSurfaceContext](FRHICommandListImmediate& RHICmdList)
+		[readSurfaceContext1, readSurfaceContext2](FRHICommandListImmediate& RHICmdList)
 		{
 			RHICmdList.ReadSurfaceData(
-				readSurfaceContext.SrcRenderTarget->GetRenderTargetTexture(),
-				readSurfaceContext.Rect,
-				*readSurfaceContext.OutData,
-				readSurfaceContext.Flags
+				readSurfaceContext1.SrcRenderTarget->GetRenderTargetTexture(),
+				readSurfaceContext1.Rect,
+				*readSurfaceContext1.OutData,
+				readSurfaceContext1.Flags
 			);
-
+			RHICmdList.ReadSurfaceData(
+				readSurfaceContext2.SrcRenderTarget->GetRenderTargetTexture(),
+				readSurfaceContext2.Rect,
+				*readSurfaceContext2.OutData,
+				readSurfaceContext2.Flags
+			);
 		});
-	
-	// Add new task to RenderQueue
-	RenderRequestQueue.Enqueue(renderRequest);
+	renderRequest->RenderFence.BeginFence(true);
 
-	// Set RenderCommandFence
-	// TODO: should pass true or false?
-	// renderRequest->RenderFence.BeginFence(true);
+	RenderRequestQueue.Enqueue(renderRequest);
 }
 
 TArray<FVector> UCaptureManager::GetOutlineOfStaticMesh(UStaticMesh* StaticMesh, FTransform& ComponentToWorldTransform)
@@ -265,9 +275,8 @@ void UCaptureManager::ProjectWorldPointToImageAndDraw(TArray<FColor>& ImageData,
 	}
 }
 
-void UCaptureManager::SendImageToServer(TArray<FColor>& ImageData) const
+void UCaptureManager::FColorImgToB64(TArray<FColor>& ImageData, FString& base64) const
 {
-	// Compress image data to PNG format
 	TArray64<uint8> DstData;
 	FImageUtils::PNGCompressImageArray(ScreenImageProperties.width, ScreenImageProperties.height, ImageData,
 	                                   DstData);
@@ -276,13 +285,27 @@ void UCaptureManager::SendImageToServer(TArray<FColor>& ImageData) const
 	uint8* SrcPtr = DstData.GetData(); // Get a pointer to the raw data of the source array
 	int32 SrcCount = DstData.Num(); // Get the number of elements in the source array
 	TArray<uint8> NDstData(SrcPtr, SrcCount);
-	// Create the destination array using the pointer and the count
-	FString base64 = FBase64::Encode(NDstData);
+	base64 = FBase64::Encode(NDstData);
+}
+
+void UCaptureManager::SendImageToServer(TArray<FColor>& ImageData1, TArray<FColor>& ImageData2) const
+{
+	// Compress image data to PNG format
+	FString base64_1;
+	FColorImgToB64(ImageData1, base64_1);
+	FString base64_2;
+	FColorImgToB64(ImageData2, base64_2);
 
 	// Create json object and emit to socket
 	auto JsonObject = USIOJConvert::MakeJsonObject();
-	JsonObject->SetStringField(TEXT("name"), InstanceName);
-	JsonObject->SetStringField(TEXT("image"), base64);
+	auto AddPostfixtoname = [](const FString& name, const FString postfix) -> FString
+	{
+		return name + postfix;
+	};
+	JsonObject->SetStringField(TEXT("name1"), AddPostfixtoname(InstanceName, FString("_1")));
+	JsonObject->SetStringField(TEXT("name2"), AddPostfixtoname(InstanceName, FString("_2")));
+	JsonObject->SetStringField(TEXT("image1"), base64_1);
+	JsonObject->SetStringField(TEXT("image2"), base64_2);
 	SIOClientComponent->EmitNative(TEXT("imageJson"), JsonObject);
 }
 
@@ -297,7 +320,7 @@ void UCaptureManager::DoImageSegmentation(TArray<FColor>& ImageData, USceneCaptu
 		UGameplayStatics::GetAllActorsWithTag(GetWorld(), FName(*Str), TempFoundActors);
 		FoundActors.Append(TempFoundActors);
 	}
-	
+
 	ParallelFor(FoundActors.Num(), [&](int32 i) -> void
 	{
 		const AStaticMeshActor* StaticMeshActor = Cast<AStaticMeshActor>(FoundActors[i]);
@@ -327,26 +350,32 @@ void UCaptureManager::DoImageSegmentation(TArray<FColor>& ImageData, USceneCaptu
 	});
 }
 
-void UCaptureManager::ProcessImageData(TArray<FColor>& ImageData, USceneCaptureComponent2D* InCaptureComponent)
+void UCaptureManager::ColorImageObjects(TArray<FColor>& ImageData1, TArray<FColor>& ImageData2)
+{
+	// map stencil value to color
+	// 133 is the wall
+	// 250 is the tree
+	TMap<int, FColor> colorMap;
+	colorMap.Add(133, FColor(255, 0, 0, 255));
+	colorMap.Add(250, FColor(0, 255, 0, 255));
+	for (int i = 0; i < ImageData1.Num(); i++)
+	{
+		FColor& color1 = ImageData1[i];
+		if(colorMap.Contains(color1.R))
+		{
+			ImageData2[i] = colorMap[color1.R];
+		}
+	}
+}
+
+void UCaptureManager::ProcessImageData(TArray<FColor>& ImageData1, TArray<FColor>& ImageData2)
 {
 	// Segmentation
 	// DoImageSegmentation(ImageData, InCaptureComponent);
+
+	// ColorImageObjects(ImageData1, ImageData2);
 	
-	// log size of image data
-	// UE_LOG(LogTemp, Warning, TEXT("ImageData size: %d"), ImageData.Num());
-	// log some of the pixels
-	// UE_LOG(LogTemp, Warning, TEXT("ImageData[0]: %s"), *ImageData[0].ToString());
-	// UE_LOG(LogTemp, Warning, TEXT("ImageData[1]: %s"), *ImageData[1].ToString());
-	// check if any of rgba are not 0 for any pixel
-	for (int i = 0; i < ImageData.Num(); i++)
-	{
-		if (ImageData[i].R == 133)
-		{
-			// UE_LOG(LogTemp, Warning, TEXT("ImageData[%d]: %s"), i, *ImageData[i].ToString());
-		}
-	}
-	
-	SendImageToServer(ImageData);
+	SendImageToServer(ImageData1, ImageData2);
 }
 
 bool UCaptureManager::ProjectWorldLocationToCapturedScreen(USceneCaptureComponent2D* InCaptureComponent,
@@ -416,7 +445,6 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 	}
 
 	USceneCaptureComponent2D* CapComp;
-	// TODO: Instead, create another capture component and use that for segmentation. Want both at same time, dont want to use the same queue.
 	bool isSegmentation = true;
 	if (isSegmentation)
 	{
@@ -426,38 +454,23 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 	{
 		CapComp = ColorCaptureComponents;
 	}
-	
+
 	// capture every frameMod frame
 	if (frameCount++ % frameMod == 0)
 	{
-		// Capture Color Image (adds render request to queue)
-
+		// Capture render target data (adds render request to queue)
 		CaptureColorNonBlocking(CapComp, true);
-		// CaptureColorNonBlocking(ColorCaptureComponents, true);
 		frameCount = 1;
 	}
-	// If there is a render task in the queue, read pixels once RenderFence is completed
 	if (!RenderRequestQueue.IsEmpty())
 	{
-		// Peek the next RenderRequest from queue
 		FRenderRequest* nextRenderRequest = nullptr;
 		RenderRequestQueue.Peek(nextRenderRequest);
 		if (nextRenderRequest)
 		{
-			// Check if rendering is done, indicated by RenderFence
-			// nextRenderRequest->RenderFence.Wait();
 			if (nextRenderRequest->RenderFence.IsFenceComplete())
 			{
-				ProcessImageData(nextRenderRequest->Image, CapComp);
-
-				// log emitting image for capture manager name
-				// UE_LOG(LogTemp, Warning, TEXT("Emitting image for capture manager name: %s"), *InstanceName);
-				// create new inference task
-				FAsyncTask<AsyncInferenceTask>* MyTask =
-					new FAsyncTask<AsyncInferenceTask>(nextRenderRequest->Image, ScreenImageProperties,
-					                                   ModelImageProperties);
-				InferenceTaskQueue.Enqueue(MyTask);
-				// Delete the first element from RenderQueue
+				ProcessImageData(nextRenderRequest->Image1, nextRenderRequest->Image2);
 				RenderRequestQueue.Pop();
 				delete nextRenderRequest;
 			}

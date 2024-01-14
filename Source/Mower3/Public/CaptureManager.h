@@ -17,7 +17,8 @@ USTRUCT()
 struct FRenderRequest {
 	GENERATED_BODY()
 
-	TArray<FColor> Image;
+	TArray<FColor> Image1;
+	TArray<FColor> Image2;
 	FRenderCommandFence RenderFence;
 	bool isPNG;
 
@@ -90,7 +91,7 @@ protected:
 	virtual void BeginPlay() override;
 
 public:
-	void ProcessImageData(TArray<FColor>& ImageData, USceneCaptureComponent2D* InCaptureComponent);
+	void ProcessImageData(TArray<FColor>& ImageData1, TArray<FColor>& ImageData2);
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
@@ -104,8 +105,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ImageCapture")
 	void CaptureColorNonBlocking(USceneCaptureComponent2D* CaptureComponent, bool IsSegmentation = false);
 
-	void SendImageToServer(TArray<FColor>& ImageData) const;
-	
+	void SendImageToServer(TArray<FColor>& ImageData1, TArray<FColor>& ImageData2) const;
+	void FColorImgToB64(TArray<FColor>& ImageData, FString& base64) const;
+	void ColorImageObjects(TArray<FColor>& ImageData1, TArray<FColor>& ImageData2);
+
 	void DoImageSegmentation(TArray<FColor>& ImageData, USceneCaptureComponent2D* InCaptureComponent);
 
 private:
