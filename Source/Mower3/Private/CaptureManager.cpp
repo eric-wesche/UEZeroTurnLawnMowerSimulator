@@ -8,10 +8,13 @@
 #include "SocketIOClientComponent.h"
 #include "ImageUtils.h"
 #include "KismetProceduralMeshLibrary.h"
+#include "MaterialDomain.h"
 #include "ProceduralMeshComponent.h"
 #include "Engine/StaticMeshActor.h"
 #include "Kismet/GameplayStatics.h"
 #include "Async/ParallelFor.h"
+#include "Kismet/KismetRenderingLibrary.h"
+#include "Materials/MaterialExpressionSceneTexture.h"
 
 // Sets default values for this component's properties
 UCaptureManager::UCaptureManager()
@@ -94,7 +97,14 @@ void UCaptureManager::SetupSegmentationCaptureComponent(USceneCaptureComponent2D
 	// Assign PostProcess Material
 	if (PostProcessMaterial)
 	{
-		// check nullptr
+		// PostProcessMaterial->MaterialDomain = EMaterialDomain::MD_PostProcess;
+		// PostProcessMaterial->BlendableLocation = BL_BeforeTonemapping;
+		//
+		// // Create a scene texture sample for the post process input 0
+		// UMaterialExpressionSceneTexture* PostProcessInput0 = NewObject<UMaterialExpressionSceneTexture>(PostProcessMaterial);
+		// PostProcessInput0->SceneTextureId = PPI_PostProcessInput0;
+		// // PostProcessMaterial->Expressions.Add(PostProcessInput0);
+		// PostProcessMaterial->MaterialEx(PostProcessInput0);
 		SegmentationCapture->AddOrUpdateBlendable(PostProcessMaterial);
 		// SegmentationCapture->AddOrUpdateBlendable(PostProcessMaterial, .5);
 	}
@@ -127,15 +137,7 @@ void UCaptureManager::CaptureColorNonBlocking(USceneCaptureComponent2D* CaptureC
 
 	const int32& rtx = CaptureComponent->TextureTarget->SizeX;
 	const int32& rty = CaptureComponent->TextureTarget->SizeY;
-
-	struct FReadSurfaceContext
-	{
-		FRenderTarget* SrcRenderTarget;
-		TArray<FColor>* OutData;
-		FIntRect Rect;
-		FReadSurfaceDataFlags Flags;
-	};
-
+	
 	// Init new RenderRequest
 	FRenderRequest* renderRequest = new FRenderRequest();
 	renderRequest->isPNG = IsSegmentation;
@@ -143,15 +145,22 @@ void UCaptureManager::CaptureColorNonBlocking(USceneCaptureComponent2D* CaptureC
 	int32 width = rtx;
 	int32 height = rty;
 	ScreenImageProperties = {width, height};
-
-	// Setup GPU command. send the same command again but use the render target that is in the widget, and modify it to add the box
+	
+	// Setup GPU command
+	struct FReadSurfaceContext
+	{
+		FRenderTarget* SrcRenderTarget;
+		TArray<FColor>* OutData;
+		FIntRect Rect;
+		FReadSurfaceDataFlags Flags;
+	};
 	FReadSurfaceContext readSurfaceContext = {
 		renderTargetResource,
 		&(renderRequest->Image), // store frame in render request
 		FIntRect(0, 0, width, height),
 		FReadSurfaceDataFlags(RCM_UNorm, CubeFace_MAX)
 	};
-
+	renderRequest->RenderFence.BeginFence(false);
 	ENQUEUE_RENDER_COMMAND(SceneDrawCompletion)(
 		[readSurfaceContext](FRHICommandListImmediate& RHICmdList)
 		{
@@ -161,14 +170,15 @@ void UCaptureManager::CaptureColorNonBlocking(USceneCaptureComponent2D* CaptureC
 				*readSurfaceContext.OutData,
 				readSurfaceContext.Flags
 			);
-		});
 
+		});
+	
 	// Add new task to RenderQueue
 	RenderRequestQueue.Enqueue(renderRequest);
 
 	// Set RenderCommandFence
 	// TODO: should pass true or false?
-	renderRequest->RenderFence.BeginFence(false);
+	// renderRequest->RenderFence.BeginFence(true);
 }
 
 TArray<FVector> UCaptureManager::GetOutlineOfStaticMesh(UStaticMesh* StaticMesh, FTransform& ComponentToWorldTransform)
@@ -321,21 +331,21 @@ void UCaptureManager::ProcessImageData(TArray<FColor>& ImageData, USceneCaptureC
 {
 	// Segmentation
 	// DoImageSegmentation(ImageData, InCaptureComponent);
+	
 	// log size of image data
-	UE_LOG(LogTemp, Warning, TEXT("ImageData size: %d"), ImageData.Num());
+	// UE_LOG(LogTemp, Warning, TEXT("ImageData size: %d"), ImageData.Num());
 	// log some of the pixels
-	UE_LOG(LogTemp, Warning, TEXT("ImageData[0]: %s"), *ImageData[0].ToString());
-	UE_LOG(LogTemp, Warning, TEXT("ImageData[1]: %s"), *ImageData[1].ToString());
+	// UE_LOG(LogTemp, Warning, TEXT("ImageData[0]: %s"), *ImageData[0].ToString());
+	// UE_LOG(LogTemp, Warning, TEXT("ImageData[1]: %s"), *ImageData[1].ToString());
 	// check if any of rgba are not 0 for any pixel
-	// for (int i = 0; i < ImageData.Num(); i++)
-	// {
-	// 	if (ImageData[i].R != 0 || ImageData[i].G != 0 || ImageData[i].B != 0 || ImageData[i].A != 0)
-	// 	{
-	// 		UE_LOG(LogTemp, Warning, TEXT("ImageData[%d]: %s"), i, *ImageData[i].ToString());
-	// 		// set A to 255
-	// 		ImageData[i].A = 255;
-	// 	}
-	// }
+	for (int i = 0; i < ImageData.Num(); i++)
+	{
+		if (ImageData[i].R == 133)
+		{
+			// UE_LOG(LogTemp, Warning, TEXT("ImageData[%d]: %s"), i, *ImageData[i].ToString());
+		}
+	}
+	
 	SendImageToServer(ImageData);
 }
 
@@ -435,6 +445,7 @@ void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 		if (nextRenderRequest)
 		{
 			// Check if rendering is done, indicated by RenderFence
+			// nextRenderRequest->RenderFence.Wait();
 			if (nextRenderRequest->RenderFence.IsFenceComplete())
 			{
 				ProcessImageData(nextRenderRequest->Image, CapComp);

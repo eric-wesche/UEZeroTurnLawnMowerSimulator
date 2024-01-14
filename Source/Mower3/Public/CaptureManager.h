@@ -66,7 +66,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = SocketIO, meta = (AllowPrivateAccess = "true"))
 	class USocketIOClientComponent* SIOClientComponent;
 
-	FString InstanceName = "ddefault";
+	FString InstanceName = "default";
 private:
 	// RenderRequest Queue
 	TQueue<FRenderRequest*> RenderRequestQueue;
