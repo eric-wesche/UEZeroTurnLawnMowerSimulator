@@ -91,6 +91,11 @@ private:
 	};
 
 	TMap<FString, TArray<TPair<FVector2d, float>>> MapTagToPixelLocationAndDistance;
+	// store array where x,y,dist are stored one after the other, and store the size for each tag so can pull those from array
+	TMap<FString, int> MapTagToPixelLocationAndDistanceSize;
+	// store array where x,y,dist are stored one after the other, and store the size for each tag so can pull those from array
+	TArray<float> PixelLocationAndDistanceArray;
+	TMap<FString, TArray<float>> MapTagToPixelData;
 
 	
 protected:

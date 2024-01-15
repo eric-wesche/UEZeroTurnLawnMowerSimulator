@@ -11,6 +11,8 @@
 #include "Async/ParallelFor.h"
 #include "Engine/SceneCapture2D.h"
 
+class UCameraComponent;
+
 UCaptureManager::UCaptureManager()
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -20,16 +22,9 @@ UCaptureManager::UCaptureManager()
 void UCaptureManager::BeginPlay()
 {
 	Super::BeginPlay();
-	if (!IsValid(MySceneCap))
-	{
-		UE_LOG(LogTemp, Error, TEXT("beginplay MySceneCap was not valid!"));
-		return;
-	}
-	// log beginplay
-	UE_LOG(LogTemp, Warning, TEXT("beginplay MySceneCap was valid!"));
+	
 	if (!ColorCapture.IsValid())
 	{
-		// log individuals
 		if (!ColorCapture.IsValid())
 		{
 			// UE_LOG(LogTemp, Error, TEXT("ColorCapture was not valid!"));
@@ -72,17 +67,10 @@ void UCaptureManager::SetupSegmentationCaptureComponent(ASceneCapture2D* ParamCa
 	SpawnSegmentationCaptureComponent(ParamCapture);
 	SetupColorCaptureComponent(SegmentationCapture);
 
-	// log setup
-	UE_LOG(LogTemp, Warning, TEXT("SetupSegmentationCaptureComponent: FOVAngle: %f"),
-	       SegmentationCapture->GetCaptureComponent2D()->FOVAngle);
 	if (PostProcessMaterial)
 	{
-		USceneCaptureComponent2D* CaptureComponent = ParamCapture->GetCaptureComponent2D();
+		USceneCaptureComponent2D* CaptureComponent = SegmentationCapture->GetCaptureComponent2D();
 		CaptureComponent->AddOrUpdateBlendable(PostProcessMaterial);
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("PostProcessMaterial was nullptr!"));
 	}
 }
 
@@ -102,15 +90,6 @@ void UCaptureManager::SpawnSegmentationCaptureComponent(ASceneCapture2D* ParamCa
 	// Get values from "parent" ColorCaptureComponent
 	newSegmentationCapture->GetCaptureComponent2D()->FOVAngle = ParamCapture->GetCaptureComponent2D()->FOVAngle;
 	SegmentationCapture = newSegmentationCapture;
-	// check if SegmentationCapture is valid
-	if (!IsValid(SegmentationCapture))
-	{
-		UE_LOG(LogTemp, Error, TEXT("SpawnSegmentationCaptureComponent: SegmentationCapture was not valid!"));
-		return;
-	}
-	// log fov angle
-	UE_LOG(LogTemp, Warning, TEXT("SpawnSegmentationCaptureComponent: FOVAngle: %f"),
-	       SegmentationCapture->GetCaptureComponent2D()->FOVAngle);
 }
 
 /**
@@ -122,7 +101,7 @@ void UCaptureManager::CaptureColorNonBlocking(USceneCaptureComponent2D* CaptureC
 {
 	USceneCaptureComponent2D* ColorCaptureComponent = ColorCapture->GetCaptureComponent2D();
 	USceneCaptureComponent2D* SegmentationCaptureComponent = SegmentationCapture->GetCaptureComponent2D();
-	if (!IsValid(SegmentationCapture) || !IsValid(ColorCaptureComponent))
+	if (!IsValid(SegmentationCaptureComponent) || !IsValid(ColorCaptureComponent))
 	{
 		UE_LOG(LogTemp, Error, TEXT("CaptureColorNonBlocking: CaptureComponent was not valid!"));
 		return;
@@ -299,6 +278,41 @@ void UCaptureManager::SendImageToServer(TArray<FColor>& ImageData1, TArray<FColo
 	JsonObject->SetStringField(TEXT("name2"), AddPostfixtoname(InstanceName, FString("_2")));
 	JsonObject->SetStringField(TEXT("image1"), base64_1);
 	JsonObject->SetStringField(TEXT("image2"), base64_2);
+
+	// send TMap<FString, TArray<float>> MapTagToPixelData to server by creating a new flaot array and adding the size of each array and then the array itself
+	TArray<float> locPixelLocationAndDistanceArray;
+	for (auto& Elem : MapTagToPixelData)
+	{
+		FString tag = Elem.Key;
+		TArray<float> PixelData = Elem.Value;
+		locPixelLocationAndDistanceArray.Add(MapTagToPixelData[tag].Num());
+		locPixelLocationAndDistanceArray.Append(PixelData);
+	}
+	// convert to makeshareable jsonvaluenumber array
+	TArray<TSharedPtr<FJsonValue>> arr2;
+	for (auto& elem2 : locPixelLocationAndDistanceArray)
+	{
+		arr2.Add(MakeShareable(new FJsonValueNumber(elem2)));
+	}
+	JsonObject->SetArrayField(TEXT("arr2"), arr2);
+	
+	// do above but use fjsonvalue and tshared pointer
+	// TArray<TSharedPtr<FJsonValue>> arr;
+	// for (auto& elem : MapTagToPixelData)
+	// {
+	// 	FString tag = elem.Key;
+	// 	TArray<float> PixelData = elem.Value;
+	// 	TArray<TSharedPtr<FJsonValue>> arr2;
+	// 	for (auto& elem2 : PixelData)
+	// 	{
+	// 		arr2.Add(MakeShareable(new FJsonValueNumber(elem2)));
+	// 	}
+	// 	arr.Add(MakeShareable(new FJsonValueObject(MakeShareable(new FJsonObject()))));
+	// 	arr.Last()->AsObject()->SetArrayField(TEXT("arr"), arr2);
+	// 	arr.Last()->AsObject()->SetStringField(TEXT("tag"), tag);		
+	// }
+	// JsonObject->SetArrayField(TEXT("arr"), arr); 
+	
 	SIOClientComponent->EmitNative(TEXT("imageJson"), JsonObject);
 }
 
@@ -346,27 +360,41 @@ void UCaptureManager::DoImageSegmentation(TArray<FColor>& ImageData, USceneCaptu
 void UCaptureManager::ColorImageObjects(TArray<FColor>& ImageData1, TArray<FColor>& ImageData2)
 {
 	USceneCaptureComponent2D* CaptureComponent = ColorCapture->GetCaptureComponent2D();
+	// clear map tag to pixel data
+	MapTagToPixelData.Empty();
 	for (int i = 0; i < ImageData1.Num(); i++)
 	{
+		// log pixel
+		// UE_LOG(LogTemp, Warning, TEXT("Pixel: %s"), *ImageData1[i].ToString());
 		FColor& color1 = ImageData1[i];
 		FColor& color2 = ImageData2[i];
 		if (const auto val = MapOfMarks.Find(color1.R) != nullptr)
 		{
-			// get x and y coordinates given 2d array was flattened
+			auto tag = MapOfMarks[color1.R].Key;
 			int32 x = i % ScreenImageProperties.width;
 			int32 y = i / ScreenImageProperties.width;
-			FString tag = MapOfMarks[color1.R].Key;
-			// calculate distance from camera
-			FVector WorldPosition;
-			FVector WorldDirection;
+			
+			// MapTagToPixelLocationAndDistance.FindOrAdd(tag).Add(TPair<FVector2d, float>(FVector2d(i % ScreenImageProperties.width, i / ScreenImageProperties.width), color2.R));
+			// PixelLocationAndDistanceArray.Add(i % ScreenImageProperties.width);
+			// PixelLocationAndDistanceArray.Add(i / ScreenImageProperties.width);
+			// PixelLocationAndDistanceArray.Add(color2.R); // placeholder still get real distance
+			// MapTagToPixelLocationAndDistanceSize.FindOrAdd(tag)++;
+			MapTagToPixelData.FindOrAdd(tag).Add(x);
+			MapTagToPixelData.FindOrAdd(tag).Add(y);
+			ImageData2[i] = MapOfMarks[color1.R].Value;
+			// log color1.r
+			// UE_LOG(LogTemp, Warning, TEXT("Color1.R: %d"), color1.R);
 
-			UGameplayStatics::DeprojectSceneCaptureToWorld(ColorCapture.Get(), FVector2d(x, y), WorldPosition,
-			                                               WorldDirection);
+			// distance
+			
+			// FVector WorldPosition;
+			// FVector WorldDirection;
+			// UGameplayStatics::DeprojectSceneCaptureToWorld(ColorCapture.Get(), FVector2d(x, y), WorldPosition,
+			//                                                WorldDirection);
 			// UE_LOG(LogTemp, Warning, TEXT("WorldPosition: %s"), *WorldPosition.ToString());
 			// UE_LOG(LogTemp, Warning, TEXT("WorldDirection: %s"), *WorldDirection.ToString());
 			// draw debug point
-			DrawDebugPoint(GetWorld(), WorldPosition, 10, FColor::Red, false, 0.1f);
-			// color2 = FColor(255, 0, 0, 255);
+			// DrawDebugPoint(GetWorld(), WorldPosition, 5, FColor::Red, false, 0.1f);
 		}
 	}
 }
@@ -429,26 +457,11 @@ bool UCaptureManager::ProjectWorldLocationToCapturedScreen(USceneCaptureComponen
 void UCaptureManager::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-	if (!IsValid(MySceneCap))
-	{
-		// UE_LOG(LogTemp, Warning, TEXT("MySceneCap not set"));
-		return;
-	}
-	if (!ColorCapture || !SegmentationCapture)
-	{
-		// UE_LOG(LogTemp, Warning, TEXT("Capture components not set"));
-		// log individuals
-		if (!ColorCapture)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("ColorCapture not set"));
-		}
-		if (!SegmentationCapture)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("SegmentationCapture not set"));
-		}
 
-		return;
-	}
+	// log the position of all the capture components
+	// UE_LOG(LogTemp, Warning, TEXT("ColorCapture: %s"), *ColorCapture->GetActorLocation().ToString());
+	// UE_LOG(LogTemp, Warning, TEXT("SegmentationCapture: %s"), *SegmentationCapture->GetActorLocation().ToString());
+	// UE_LOG(LogTemp, Warning, TEXT("myscenecap catpure component: %s"), *MySceneCap->GetComponentLocation().ToString());
 
 	// capture frame every frameMod frame
 	if (frameCount++ % frameMod == 0)
