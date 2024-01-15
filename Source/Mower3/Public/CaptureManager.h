@@ -2,16 +2,11 @@
 
 #pragma once
 
-
 #include "CoreMinimal.h"
-
 #include "Components/ActorComponent.h"
-#include "Engine/SceneCapture2D.h"
-
 #include "CaptureManager.generated.h"
 
-// if declare this class below a place where it is used in initialization, it will cause compile error. so forward declare it here.
-class AsyncInferenceTask;
+class ASceneCapture2D;
 
 USTRUCT()
 struct FRenderRequest {
@@ -53,10 +48,13 @@ public:
 	UCaptureManager();
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture")
-	USceneCaptureComponent2D* ColorCaptureComponents;
+	ASceneCapture2D* SegmentationCapture;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture")
-	USceneCaptureComponent2D* SegmentationCapture;
+	TSoftObjectPtr<ASceneCapture2D> ColorCapture;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture")
+	USceneCaptureComponent2D* MySceneCap;
 	
 	// UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture")
 	// UTextureRenderTarget2D* RenderTarget2D;
@@ -71,10 +69,6 @@ public:
 private:
 	// RenderRequest Queue
 	TQueue<FRenderRequest*> RenderRequestQueue;
-	// inference task queue
-	TQueue<FAsyncTask<AsyncInferenceTask>*> InferenceTaskQueue;
-	// current inference task
-	FAsyncTask<AsyncInferenceTask>* CurrentInferenceTask = nullptr;
 
 	FScreenImageProperties ScreenImageProperties = { 0 };
 	// const FModelImageProperties ModelImageProperties = { 640, 480 };
@@ -85,6 +79,19 @@ private:
 	int frameCount = 1;
 	// capture every frameMod frames
 	int frameMod = 5;
+
+	const TMap<int, TPair<FString, FColor>> MapOfMarks = {
+		{133, {"Wall", FColor(255, 0, 0, 255)}},
+		{250, {"Tree", FColor(0, 0, 255, 255)}}
+	};
+
+	const TSet<int> ObjectTagIds = {
+		133,
+		250
+	};
+
+	TMap<FString, TArray<TPair<FVector2d, float>>> MapTagToPixelLocationAndDistance;
+
 	
 protected:
 	// Called when the game starts
@@ -112,27 +119,7 @@ public:
 	void DoImageSegmentation(TArray<FColor>& ImageData, USceneCaptureComponent2D* InCaptureComponent);
 
 private:
-	void SetupColorCaptureComponent(USceneCaptureComponent2D* CaptureComponent);
-	void SetupSegmentationCaptureComponent(USceneCaptureComponent2D* ColorCapture);
-	void SpawnSegmentationCaptureComponent(USceneCaptureComponent2D* ColorCapture);
-};
-
-class AsyncInferenceTask : public FNonAbandonableTask {
-public:
-	AsyncInferenceTask(const TArray<FColor>& RawImage, const FScreenImageProperties ScreenImage,
-		const FModelImageProperties ModelImage);
-	
-	// Required by UE4!
-	FORCEINLINE TStatId GetStatId() const {
-		RETURN_QUICK_DECLARE_CYCLE_STAT(AsyncInferenceTask, STATGROUP_ThreadPoolAsyncTasks);
-	}
-
-private:
-	TArray<FColor> RawImageCopy;
-	FScreenImageProperties ScreenImage;
-	FModelImageProperties ModelImage;
-
-
-public:
-	void DoWork();
+	void SetupColorCaptureComponent(ASceneCapture2D* ParamCapture);
+	void SetupSegmentationCaptureComponent(ASceneCapture2D* ParamCapture);
+	void SpawnSegmentationCaptureComponent(ASceneCapture2D* ParamCapture);
 };

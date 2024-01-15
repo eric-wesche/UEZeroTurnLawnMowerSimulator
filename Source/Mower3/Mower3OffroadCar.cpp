@@ -15,6 +15,7 @@
 #include "Engine/StaticMeshActor.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "DrawDebugHelpers.h"
+#include "Engine/SceneCapture2D.h"
 
 AMower3OffroadCar::AMower3OffroadCar(const FObjectInitializer& ObjectInitializer) :
 Super(ObjectInitializer.SetDefaultSubobjectClass<UMowerVehicleMovementComponent>(VehicleMovementComponentName))
@@ -25,10 +26,6 @@ Super(ObjectInitializer.SetDefaultSubobjectClass<UMowerVehicleMovementComponent>
 	// construct the mesh components
 	Chassis = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Chassis"));
 	Chassis->SetupAttachment(GetMesh());
-	// Chassis->SetNotifyRigidBodyCollision(true); // Same as setting 'Simulation Generates Hit Events' in bp. This is for physics simulation, maybe not relevant here.
-	// Chassis->SetCollisionProfileName(FName("BlockAllDynamic"));
-	// Chassis->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Block);
-	// Chassis->SetCollisionResponseToChannel(ECollisionChannel::ECC_WorldDynamic, ECollisionResponse::ECR_Block);
 	
 	// NOTE: tire sockets are set from the Blueprint class
 	TireFrontLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Tire Front Left"));
@@ -100,22 +97,18 @@ Super(ObjectInitializer.SetDefaultSubobjectClass<UMowerVehicleMovementComponent>
 	GetChaosVehicleMovement()->SteeringSetup.SteeringType = ESteeringType::AngleRatio;
 	GetChaosVehicleMovement()->SteeringSetup.AngleRatio = 0.7f;
 	
-	MyCaptureManager = CreateDefaultSubobject<UCaptureManager>(TEXT("MyCaptureManager"));
-	MySceneCapture1 = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("MySceneCapture1"));
-	MySceneCapture1->SetupAttachment(GetMesh());
-	SegmentationCapture = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("SegmentationCapture"));
-	SegmentationCapture->SetupAttachment(GetMesh());
-	MyCaptureManager->ColorCaptureComponents = MySceneCapture1;
-	MyCaptureManager->SegmentationCapture = SegmentationCapture;
 
-	MySceneCapture4 = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("MySceneCapture4"));
-	MySceneCapture4->SetupAttachment(GetMesh());
-	
+	MySceneCapture11 = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("MySceneCapture11"));
+	MySceneCapture11->SetupAttachment(GetMesh());
+	MyCaptureManager = CreateDefaultSubobject<UCaptureManager>(TEXT("MyCaptureManager"));
+	MyCaptureManager->MySceneCap = MySceneCapture11;
+
 	SIOClientComponent = CreateDefaultSubobject<USocketIOClientComponent>(TEXT("SocketIOClientComponent"));
 	SIOClientComponent->URLParams.AddressAndPort = TEXT("http://127.0.0.1:8000");
 	SIOClientComponent->URLParams.Path = TEXT("");
 
 	MyCaptureManager->SIOClientComponent = SIOClientComponent;
+	// MyCaptureManager->RegisterComponent();
 }
 
 void AMower3OffroadCar::Tick(float DeltaSeconds)
@@ -197,46 +190,12 @@ void AMower3OffroadCar::ReceiveProcessedImageEvent()
 	});
 }
 
-void AMower3OffroadCar::SetupCaptureManagers()
-{
-	// Get the location and rotation of the existing scene capture component
-	FVector ExistingLocation = MySceneCapture1->GetComponentLocation();
-	FRotator ExistingRotation = MySceneCapture1->GetComponentRotation();
-
-	for (int i = 0; i < 0; i++)
-	{
-		UCaptureManager* TempCaptureManager = NewObject<UCaptureManager>(this);
-		
-		// Create a new scene capture component
-		USceneCaptureComponent2D* SceneCapture = NewObject<USceneCaptureComponent2D>(this);
-		SceneCapture->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
-		SceneCapture->RegisterComponent();
-		// new rotation is existing rotation plus 360 divided by the number of captures
-		FRotator NewRotation = ExistingRotation + FRotator(0, 360 / 10 * i, 0);
-		// FRotator NewRotation = FRotator(0, ExistingRotation.Yaw + 360 / 10 * i, 0);
-
-		SceneCapture->SetWorldLocationAndRotation(ExistingLocation, NewRotation);
-
-		TempCaptureManager->ColorCaptureComponents = SceneCapture;
-		TempCaptureManager->SIOClientComponent = SIOClientComponent;
-		TempCaptureManager->InstanceName = FString::Printf(TEXT("Instance %d"), i);
-		AddInstanceComponent(TempCaptureManager);
-		TempCaptureManager->RegisterComponent();
-		
-		CaptureManagers.Add(TempCaptureManager);
-	}
-	// log the number of capture managers
-	// UE_LOG(LogTemp, Warning, TEXT("Number of Capture Managers: %d"), CaptureManagers.Num());
-}
-
 void AMower3OffroadCar::BeginPlay()
 {
 	Super::BeginPlay();
 	MyBoxComponent->OnComponentBeginOverlap.AddDynamic(this, &AMower3OffroadCar::OnBeginOverlap);\
 	
 	ReceiveProcessedImageEvent();
-
-	SetupCaptureManagers();
 }
 
 void AMower3OffroadCar::ReplaceOrRemoveGrass(const bool bDebug, const FString& grassNameToReplace)
