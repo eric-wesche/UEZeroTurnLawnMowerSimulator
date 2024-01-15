@@ -10,33 +10,40 @@
 #include "FoliageInstancedStaticMeshComponent.h"
 #include "MowerVehicleMovementComponent.h"
 #include "SocketIOClientComponent.h"
+#include "Components/BoxComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
+#include "Engine/StaticMeshActor.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "DrawDebugHelpers.h"
+#include "Engine/SceneCapture2D.h"
 
 AMower3OffroadCar::AMower3OffroadCar(const FObjectInitializer& ObjectInitializer) :
 Super(ObjectInitializer.SetDefaultSubobjectClass<UMowerVehicleMovementComponent>(VehicleMovementComponentName))
 {
+	MyBoxComponent = CreateDefaultSubobject<UBoxComponent>(TEXT("Box Component"));
+	MyBoxComponent->SetupAttachment(GetMesh());
+	
 	// construct the mesh components
 	Chassis = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Chassis"));
 	Chassis->SetupAttachment(GetMesh());
-
+	
 	// NOTE: tire sockets are set from the Blueprint class
 	TireFrontLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Tire Front Left"));
 	TireFrontLeft->SetupAttachment(GetMesh(), FName("VisWheel_FL"));
-	TireFrontLeft->SetCollisionProfileName(FName("NoCollision"));
+	// TireFrontLeft->SetCollisionProfileName(FName("NoCollision"));
 
 	TireFrontRight = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Tire Front Right"));
 	TireFrontRight->SetupAttachment(GetMesh(), FName("VisWheel_FR"));
-	TireFrontRight->SetCollisionProfileName(FName("NoCollision"));
+	// TireFrontRight->SetCollisionProfileName(FName("NoCollision"));
 	TireFrontRight->SetRelativeRotation(FRotator(0.0f, 180.0f, 0.0f));
 
 	TireRearLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Tire Rear Left"));
 	TireRearLeft->SetupAttachment(GetMesh(), FName("VisWheel_BL"));
-	TireRearLeft->SetCollisionProfileName(FName("NoCollision"));
+	// TireRearLeft->SetCollisionProfileName(FName("NoCollision"));
 
 	TireRearRight = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Tire Rear Right"));
 	TireRearRight->SetupAttachment(GetMesh(), FName("VisWheel_BR"));
-	TireRearRight->SetCollisionProfileName(FName("NoCollision"));
+	// TireRearRight->SetCollisionProfileName(FName("NoCollision"));
 	TireRearRight->SetRelativeRotation(FRotator(0.0f, 180.0f, 0.0f));
 
 	// adjust the cameras
@@ -89,42 +96,106 @@ Super(ObjectInitializer.SetDefaultSubobjectClass<UMowerVehicleMovementComponent>
 	// NOTE: Check the Blueprint asset for the Steering Curve
 	GetChaosVehicleMovement()->SteeringSetup.SteeringType = ESteeringType::AngleRatio;
 	GetChaosVehicleMovement()->SteeringSetup.AngleRatio = 0.7f;
+	
 
-	MySceneCapture1 = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("MySceneCapture1"));
-	MySceneCapture1->SetupAttachment(GetMesh());
-
+	MySceneCapture11 = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("MySceneCapture11"));
+	MySceneCapture11->SetupAttachment(GetMesh());
 	MyCaptureManager = CreateDefaultSubobject<UCaptureManager>(TEXT("MyCaptureManager"));
-	
-	check(MyCaptureManager);
-	MyCaptureManager->ColorCaptureComponents = MySceneCapture1;
-	
+	MyCaptureManager->MySceneCap = MySceneCapture11;
+
 	SIOClientComponent = CreateDefaultSubobject<USocketIOClientComponent>(TEXT("SocketIOClientComponent"));
 	SIOClientComponent->URLParams.AddressAndPort = TEXT("http://127.0.0.1:8000");
 	SIOClientComponent->URLParams.Path = TEXT("");
 
 	MyCaptureManager->SIOClientComponent = SIOClientComponent;
+	// MyCaptureManager->RegisterComponent();
 }
 
 void AMower3OffroadCar::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	ChaosVehicleMovement->SetLeftThrottleInput(-1.f);
-	ChaosVehicleMovement->SetRightThrottleInput(1.f);
+	// ChaosVehicleMovement->SetLeftThrottleInput(-1.f);
+	// ChaosVehicleMovement->SetRightThrottleInput(1.f);
 
 	ReplaceOrRemoveGrass(false);
 	// ReplaceOrRemoveGrass(true);
 }
 
+void AMower3OffroadCar::OnBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	// if other actor is a static mesh actor then log it
+	if(OtherActor->IsA(AStaticMeshActor::StaticClass()))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("OtherActor is a static mesh actor"));
+	}
+	
+	// log tags array of other actor
+	for(auto tag: OtherActor->Tags)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Tag: %s"), *tag.ToString());
+	}
+	const TSet<FName> SetOfTagsToAccept = {"Tree", "Wall"};
+	// get the tag of the other actor and check if it is in the set of tags to accept
+	// first check if the other actor has any tags
+	if(OtherActor->Tags.Num() == 0)
+	{
+		return;
+	}
+	const FName OtherActorTag = OtherActor->Tags[0];
+	if(!SetOfTagsToAccept.Contains(OtherActorTag))
+	{
+		return;
+	}
+		
+	UE_LOG(LogTemp, Warning, TEXT("OnBeginOverlap"));
+	// log the overlapped component and other component
+	UE_LOG(LogTemp, Warning, TEXT("OverlappedComp: %s"), *OverlappedComp->GetName());
+	UE_LOG(LogTemp, Warning, TEXT("OtherComp: %s"), *OtherComp->GetName());
+	// log the other actor
+	UE_LOG(LogTemp, Warning, TEXT("OtherActor: %s"), *OtherActor->GetName());
+	// log the other body index
+	UE_LOG(LogTemp, Warning, TEXT("OtherBodyIndex: %d"), OtherBodyIndex);
+	// log whether the overlap was from a sweep
+	UE_LOG(LogTemp, Warning, TEXT("bFromSweep: %d"), bFromSweep);
+	// log the sweep result
+	UE_LOG(LogTemp, Warning, TEXT("SweepResult: %s"), *SweepResult.ToString());
+	
+}
+
+void AMower3OffroadCar::ReceiveProcessedImageEvent()
+{
+	SIOClientComponent->OnNativeEvent(TEXT("processedImage"), [this](const FString& Event,
+	                                                                 const TSharedPtr<FJsonValue>& Message)
+	{
+		// UE_LOG(LogTemp, Warning, TEXT("Received: %s"), *USIOJConvert::ToJsonString(Message));
+		TSharedPtr<FJsonObject> JsonObject = Message->AsObject();
+		// FString name = JsonObject->GetStringField("name");
+		// UE_LOG(LogTemp, Warning, TEXT("Received name: %s"), *name);
+
+		auto LeftThrottle = JsonObject->GetField<EJson::Number>("leftThrottle");
+		auto RightThrottle = JsonObject->GetField<EJson::Number>("rightThrottle");
+		if(LeftThrottle->Type != EJson::Number || RightThrottle->Type != EJson::Number)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Received LeftThrottle or RightThrottle is not a number"));
+			return;
+		}
+		auto LeftThrottleValue = LeftThrottle->AsNumber();
+		auto RightThrottleValue = RightThrottle->AsNumber();
+		// UE_LOG(LogTemp, Warning, TEXT("Received LeftThrottle: %f"), LeftThrottleValue);
+		// UE_LOG(LogTemp, Warning, TEXT("Received RightThrottle: %f"), RightThrottleValue);
+		// ChaosVehicleMovement->SetLeftThrottleInput(LeftThrottleValue);
+		// ChaosVehicleMovement->SetRightThrottleInput(RightThrottleValue);
+	});
+}
+
 void AMower3OffroadCar::BeginPlay()
 {
 	Super::BeginPlay();
+	MyBoxComponent->OnComponentBeginOverlap.AddDynamic(this, &AMower3OffroadCar::OnBeginOverlap);\
 	
-	SIOClientComponent->OnNativeEvent(TEXT("my response"), [this](const FString& Event,
-																  const TSharedPtr<FJsonValue>& Message)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Received: %s"), *USIOJConvert::ToJsonString(Message));
-	});
+	ReceiveProcessedImageEvent();
 }
 
 void AMower3OffroadCar::ReplaceOrRemoveGrass(const bool bDebug, const FString& grassNameToReplace)
