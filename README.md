@@ -23,3 +23,5 @@ I have not added per pixel depth (or distance to, say, different areas of the ve
 I have not added machine learning algorithms to control the mower. You could for example add a reinforcement learning algorithm.
 
 I have a zero-turn mower and I intend to make it autonmous. If anyone wants to work on this or has done so, I am interested.
+
+There are likely many ways to optimize the code.
